@@ -38,20 +38,29 @@ impl<T> OrderedVec<T> {
     pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
         self.vec.get_mut(idx)?.as_mut()
     }
-    // Get the length of the current ordered vector. This returns the number of valid elements in the vector
-    pub fn len(&self) -> usize {
+    // Get the number of valid elements in the ordered vector
+    pub fn count(&self) -> usize {
         self.vec.len() - self.missing.len()
     }
+}
+
+// Iter magic
+impl<T> OrderedVec<T> {
     // Get an iterator over the valid elements
-    pub fn valid(&self) -> impl Iterator<Item = &T>{
+    pub fn iter(&self) -> impl Iterator<Item = &T>{
         self.vec.iter().filter_map(|x| x.as_ref())
     }
+    // Get a mutable iterator over the valid elements
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.vec.iter_mut().filter_map(|x| x.as_mut())
+    }
     // Get an iterator over the indices of the null elements
-    pub fn invalid(&self) -> impl Iterator<Item = &usize>{
+    pub fn iter_invalid(&self) -> impl Iterator<Item = &usize>{
         self.missing.iter()
     }
 }
 
+// Traits
 impl<T> Index<usize> for OrderedVec<T> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {

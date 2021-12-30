@@ -67,10 +67,11 @@ pub mod test {
         assert_eq!(vec[idx_5], 5);
         assert_eq!(vec[idx_6], 6);
         assert_eq!(vec.get(idx_2), None);
+        // The count should be 2 now
+        assert_eq!(vec.count(), 2);
 
         // Now, we will add another element, and it's index should be the same as idx_2 (Since we re-use deleted indices)
         let idx_9 = vec.push_shove(9);
-
         assert_eq!(idx_9, idx_2);
     }
 }
