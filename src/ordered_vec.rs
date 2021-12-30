@@ -28,6 +28,13 @@ impl<T> OrderedVec<T> {
             return idx;
         }
     }
+    // Get the index of the next element that we will add
+    pub fn get_next_idx(&self) -> usize {
+        // Normal push
+        if self.missing.is_empty() { return self.vec.len(); }
+        // Shove
+        *self.missing.last().unwrap()
+    }
     // Remove an element that was already added
     pub fn remove(&mut self, idx: usize) -> Option<T> {
         self.missing.push(idx);
