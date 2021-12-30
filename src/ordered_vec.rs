@@ -7,6 +7,12 @@ pub struct OrderedVec<T> {
     missing: Vec<usize>, // A list of the indices that contain a null element, so whenever we add a new element, we will add it there
 }
 
+impl<T> Clone for OrderedVec<T> where T: Clone {
+    fn clone(&self) -> Self {
+        Self { vec: self.vec.clone(), missing: self.missing.clone() }
+    }
+}
+
 impl<T> Default for OrderedVec<T> {
     fn default() -> Self {
         Self { vec: Vec::new(), missing: Vec::new() }
