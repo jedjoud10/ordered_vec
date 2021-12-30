@@ -73,6 +73,7 @@ pub mod test {
         // Now, we will add another element, and it's index should be the same as idx_2 (Since we re-use deleted indices)
         let idx_9 = vec.push_shove(9);
         assert_eq!(idx_9, idx_2);
+
         struct CustomStruct();
         let mut vec = OrderedVec::<CustomStruct>::default();
     }

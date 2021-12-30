@@ -1,4 +1,4 @@
-use std::ops::{Index, IndexMut};
+use std::{ops::{Index, IndexMut}, fmt::Debug};
 
 
 // A collection that keeps the ordering of it's elements, even when deleting an element
@@ -10,6 +10,12 @@ pub struct OrderedVec<T> {
 impl<T> Clone for OrderedVec<T> where T: Clone {
     fn clone(&self) -> Self {
         Self { vec: self.vec.clone(), missing: self.missing.clone() }
+    }
+}
+
+impl<T> Debug for OrderedVec<T> where T: Debug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OrderedVec").field("vec", &self.vec).field("missing", &self.missing).finish()
     }
 }
 
