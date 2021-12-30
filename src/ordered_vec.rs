@@ -2,10 +2,15 @@ use std::ops::{Index, IndexMut};
 
 
 // A collection that keeps the ordering of it's elements, even when deleting an element
-#[derive(Default)]
 pub struct OrderedVec<T> {
     vec: Vec<Option<T>>, // A list of the current elements in the list
     missing: Vec<usize>, // A list of the indices that contain a null element, so whenever we add a new element, we will add it there
+}
+
+impl<T> Default for OrderedVec<T> {
+    fn default() -> Self {
+        Self { vec: Vec::new(), missing: Vec::new() }
+    }
 }
 
 // Actual code
