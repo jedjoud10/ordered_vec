@@ -1,12 +1,12 @@
 pub mod test {
-    use std::collections::HashMap;
-    use crate::{ordered_vec::OrderedVec};
+    use std::{collections::HashMap, thread::JoinHandle};
+    use crate::{ordered_vec::OrderedVec, half_concurrent_ordered_vec::HalfConcurrentOrderedVec};
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {
-        const N: usize = 100_000;
+        const N: usize = 10_000;
         let mut hashmap = HashMap::<usize, u64>::default();
-        let mut ordered_vec = OrderedVec::<u64>::default();
+        let mut ordered_vec = HalfConcurrentOrderedVec::<u64>::default();
         // Compare a Rust HashMap to my SmartList collection
 
         // Adding ordered elements
@@ -76,5 +76,32 @@ pub mod test {
 
         struct CustomStruct();
         let mut vec = OrderedVec::<CustomStruct>::default();
+    }
+    // Test the Half-Concurrent Ordered Vec
+    #[test]
+    pub fn test_concurrent() {
+        use std::sync::Arc;
+        let mut vec = HalfConcurrentOrderedVec::<i32>::default();
+        let arc = Arc::new(vec);
+        // Create a thread
+        let x = (0..5).into_iter().map(|x| {            
+            let arc2 = arc.clone();
+            std::thread::spawn(move || {
+                let vec = arc2;
+                for x in 0..1 {
+                    let idx = vec.push_shove(0);
+                    println!("Added at {}", idx);
+                }
+                /*
+                println!("Removing value at idx 5");
+                vec.remove(5).unwrap();
+                let idx = vec.push_shove(0);
+                println!("Added at {}", idx);
+                */
+            })
+        }).collect::<Vec<JoinHandle<()>>>();
+        for y in x { y.join().unwrap(); }
+        arc.as_ref().update();
+        
     }
 }
