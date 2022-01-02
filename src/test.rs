@@ -84,7 +84,7 @@ pub mod test {
 
         // Now, we will add another element, and it's index should be the same as idx_2 (Since we re-use deleted indices)
         let idx_9 = vec.push_shove(9);
-        assert_eq!(idx_9, idx_2);        
+        assert_eq!(idx_9, idx_2);
     }
     // My drain and iter test
     #[test]
@@ -110,5 +110,30 @@ pub mod test {
         assert_eq!(removed.next(), Some((0, 0)));
         assert_eq!(removed.next(), Some((2, 2)));
         assert_eq!(removed.next(), Some((4, 4)));
+    }
+    // Clearing test
+    #[test]
+    pub fn clear_test() {
+        let mut vec = OrderedVec::<i32>::default();
+        vec.push_shove(0);
+        vec.push_shove(1);
+        vec.push_shove(2);
+        assert_eq!(vec.count(), 3);
+        // Clear the vector
+        let cleared = vec.clear();
+        assert_eq!(cleared, vec![Some(0), Some(1), Some(2)]);
+
+        assert_eq!(vec.count(), 0);
+        assert_eq!(vec.count_invalid(), 3);
+        vec.push_shove(0);
+        vec.push_shove(1);
+        vec.push_shove(2);
+        vec.push_shove(4);
+        vec.push_shove(5);
+        vec.push_shove(6);
+        assert_eq!(
+            vec.vec,
+            vec![Some(2), Some(1), Some(0), Some(4), Some(5), Some(6)]
+        )
     }
 }

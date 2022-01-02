@@ -6,9 +6,9 @@ use std::{
 /// A collection that keeps the ordering of its elements, even when deleting an element
 pub struct OrderedVec<T> {
     /// A list of the current elements in the list
-    vec: Vec<Option<T>>, 
+    pub(crate) vec: Vec<Option<T>>,
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    missing: Vec<usize>, 
+    pub(crate) missing: Vec<usize>,
 }
 
 impl<T> Clone for OrderedVec<T>
@@ -87,15 +87,29 @@ impl<T> OrderedVec<T> {
     pub fn count(&self) -> usize {
         self.vec.len() - self.missing.len()
     }
+    /// Get the number of invalid elements in the ordered vector
+    pub fn count_invalid(&self) -> usize {
+        self.missing.len()
+    }
+    /// Clear the whole ordered vector
+    pub fn clear(&mut self) -> Vec<Option<T>> {
+        let len = self.vec.len();
+        self.missing = (0..len).collect::<Vec<_>>();
+        // https://users.rust-lang.org/t/how-to-initialize-vec-option-t-with-none/30580
+        let empty = std::iter::repeat_with(|| None)
+            .take(len)
+            .collect::<Vec<_>>();
+
+        let cleared = std::mem::replace(&mut self.vec, empty);
+        cleared
+    }
 }
 
 /// Iter magic
 impl<T> OrderedVec<T> {
     /// Get an iterator over the valid elements
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.vec
-            .iter()
-            .filter_map(|val| val.as_ref())
+        self.vec.iter().filter_map(|val| val.as_ref())
     }
     /// Get an iterator over the valid elements
     pub fn iter_indexed(&self) -> impl Iterator<Item = (usize, &T)> {
@@ -109,9 +123,7 @@ impl<T> OrderedVec<T> {
     }
     /// Get a mutable iterator over the valid elements
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.vec
-            .iter_mut()
-            .filter_map(|val| val.as_mut())
+        self.vec.iter_mut().filter_map(|val| val.as_mut())
     }
     /// Get a mutable iterator over the valid elements with their index
     pub fn iter_indexed_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
@@ -129,12 +141,24 @@ impl<T> OrderedVec<T> {
     }
     /// Drain the elements that only return true. This will return just an Iterator of the index and value of the drained elements
     pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (usize, T)> + '_
-        where F: FnMut(usize, &T) -> bool
+    where
+        F: FnMut(usize, &T) -> bool,
     {
-        // Keep track of which elements should be removed 
-        let indices = self.iter_indexed().filter_map(|(index, val)| if filter(index, val) { Some(index) } else { None }).collect::<Vec<usize>>();
+        // Keep track of which elements should be removed
+        let indices = self
+            .iter_indexed()
+            .filter_map(|(index, val)| {
+                if filter(index, val) {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<usize>>();
         // Now actually remove them
-        indices.into_iter().map(|idx| (idx, self.remove(idx).unwrap()))
+        indices
+            .into_iter()
+            .map(|idx| (idx, self.remove(idx).unwrap()))
     }
 }
 
