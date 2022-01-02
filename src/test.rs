@@ -1,6 +1,6 @@
 pub mod test {
+    use crate::ordered_vec::OrderedVec;
     use std::collections::HashMap;
-    use crate::{ordered_vec::OrderedVec};
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {
@@ -22,21 +22,29 @@ pub mod test {
             ordered_vec.push_shove(x as u64);
         }
         let z = i.elapsed().as_micros();
-        println!("Add Ordered Vec: {}μ, {}% faster than HashMap", z, (x as f32 / z as f32) * 100.0);
-    
+        println!(
+            "Add Ordered Vec: {}μ, {}% faster than HashMap",
+            z,
+            (x as f32 / z as f32) * 100.0
+        );
+
         let i = std::time::Instant::now();
-        for x in 0..(N/2) {
+        for x in 0..(N / 2) {
             hashmap.remove(&x);
         }
         let x = i.elapsed().as_micros();
         println!("Remove HashMap: {}μ", i.elapsed().as_micros());
 
         let i = std::time::Instant::now();
-        for x in 0..(N/2) {
+        for x in 0..(N / 2) {
             ordered_vec.remove(x);
         }
         let z = i.elapsed().as_micros();
-        println!("Remove Ordered Vec: {}μ, {}% faster than HashMap", i.elapsed().as_micros(), (x as f32 / z as f32) * 100.0);   
+        println!(
+            "Remove Ordered Vec: {}μ, {}% faster than HashMap",
+            i.elapsed().as_micros(),
+            (x as f32 / z as f32) * 100.0
+        );
 
         let i = std::time::Instant::now();
         for x in 0..N {
@@ -50,7 +58,11 @@ pub mod test {
             ordered_vec.push_shove(x as u64);
         }
         let z = i.elapsed().as_micros();
-        println!("Add Ordered Vec: {}μ, {}% faster than HashMap", z, (x as f32 / z as f32) * 100.0);
+        println!(
+            "Add Ordered Vec: {}μ, {}% faster than HashMap",
+            z,
+            (x as f32 / z as f32) * 100.0
+        );
     }
     // An actual unit test to check the order of elements in the collection
     #[test]
@@ -73,8 +85,13 @@ pub mod test {
         // Now, we will add another element, and it's index should be the same as idx_2 (Since we re-use deleted indices)
         let idx_9 = vec.push_shove(9);
         assert_eq!(idx_9, idx_2);
+        let mut vec = OrderedVec::<i32>::default();
+        let idx_5 = vec.push_shove(0);
+        let idx_2 = vec.push_shove(1);
+        let idx_6 = vec.push_shove(2);
 
-        struct CustomStruct();
-        let mut vec = OrderedVec::<CustomStruct>::default();
+        for (index, elem) in vec.iter() {
+            assert_eq!(index, *elem as usize);
+        }
     }
 }

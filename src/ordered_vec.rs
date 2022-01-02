@@ -1,5 +1,7 @@
-use std::{ops::{Index, IndexMut}, fmt::Debug};
-
+use std::{
+    fmt::Debug,
+    ops::{Index, IndexMut},
+};
 
 // A collection that keeps the ordering of it's elements, even when deleting an element
 pub struct OrderedVec<T> {
@@ -7,21 +9,36 @@ pub struct OrderedVec<T> {
     missing: Vec<usize>, // A list of the indices that contain a null element, so whenever we add a new element, we will add it there
 }
 
-impl<T> Clone for OrderedVec<T> where T: Clone {
+impl<T> Clone for OrderedVec<T>
+where
+    T: Clone,
+{
     fn clone(&self) -> Self {
-        Self { vec: self.vec.clone(), missing: self.missing.clone() }
+        Self {
+            vec: self.vec.clone(),
+            missing: self.missing.clone(),
+        }
     }
 }
 
-impl<T> Debug for OrderedVec<T> where T: Debug {
+impl<T> Debug for OrderedVec<T>
+where
+    T: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OrderedVec").field("vec", &self.vec).field("missing", &self.missing).finish()
+        f.debug_struct("OrderedVec")
+            .field("vec", &self.vec)
+            .field("missing", &self.missing)
+            .finish()
     }
 }
 
 impl<T> Default for OrderedVec<T> {
     fn default() -> Self {
-        Self { vec: Vec::new(), missing: Vec::new() }
+        Self {
+            vec: Vec::new(),
+            missing: Vec::new(),
+        }
     }
 }
 
@@ -29,21 +46,23 @@ impl<T> Default for OrderedVec<T> {
 impl<T> OrderedVec<T> {
     // Add an element to the ordered vector
     pub fn push_shove(&mut self, elem: T) -> usize {
-        if self.missing.is_empty() { 
+        if self.missing.is_empty() {
             // Add the element normally
-            self.vec.push(Some(elem)); return self.vec.len() - 1;
-        } 
-        else {
+            self.vec.push(Some(elem));
+            return self.vec.len() - 1;
+        } else {
             // If we have some null elements, we can validate the given element there
             let idx = self.missing.pop().unwrap();
-            *self.vec.get_mut(idx).unwrap() = Some(elem); 
+            *self.vec.get_mut(idx).unwrap() = Some(elem);
             return idx;
         }
     }
     // Get the index of the next element that we will add
     pub fn get_next_idx(&self) -> usize {
         // Normal push
-        if self.missing.is_empty() { return self.vec.len(); }
+        if self.missing.is_empty() {
+            return self.vec.len();
+        }
         // Shove
         *self.missing.last().unwrap()
     }
@@ -71,15 +90,27 @@ impl<T> OrderedVec<T> {
 // Iter magic
 impl<T> OrderedVec<T> {
     // Get an iterator over the valid elements
-    pub fn iter(&self) -> impl Iterator<Item = &T>{
-        self.vec.iter().filter_map(|x| x.as_ref())
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
+        self.vec
+            .iter()
+            .enumerate()
+            .filter_map(|(index, val)| match val {
+                Some(val) => Some((index, val)),
+                None => None,
+            })
     }
     // Get a mutable iterator over the valid elements
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.vec.iter_mut().filter_map(|x| x.as_mut())
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
+        self.vec
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(index, val)| match val {
+                Some(val) => Some((index, val)),
+                None => None,
+            })
     }
     // Get an iterator over the indices of the null elements
-    pub fn iter_invalid(&self) -> impl Iterator<Item = &usize>{
+    pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {
         self.missing.iter()
     }
 }
