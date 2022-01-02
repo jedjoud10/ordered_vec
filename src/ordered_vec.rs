@@ -92,7 +92,13 @@ impl<T> OrderedVec<T> {
 /// Iter magic
 impl<T> OrderedVec<T> {
     /// Get an iterator over the valid elements
-    pub fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.vec
+            .iter()
+            .filter_map(|val| val.as_ref())
+    }
+    /// Get an iterator over the valid elements
+    pub fn iter_indexed(&self) -> impl Iterator<Item = (usize, &T)> {
         self.vec
             .iter()
             .enumerate()
@@ -102,7 +108,13 @@ impl<T> OrderedVec<T> {
             })
     }
     /// Get a mutable iterator over the valid elements
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.vec
+            .iter_mut()
+            .filter_map(|val| val.as_mut())
+    }
+    /// Get a mutable iterator over the valid elements with their index
+    pub fn iter_indexed_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
         self.vec
             .iter_mut()
             .enumerate()
@@ -120,7 +132,7 @@ impl<T> OrderedVec<T> {
         where F: FnMut(usize, &T) -> bool
     {
         // Keep track of which elements should be removed 
-        let indices = self.iter().filter_map(|(index, val)| if filter(index, val) { Some(index) } else { None }).collect::<Vec<usize>>();
+        let indices = self.iter_indexed().filter_map(|(index, val)| if filter(index, val) { Some(index) } else { None }).collect::<Vec<usize>>();
         // Now actually remove them
         indices.into_iter().map(|idx| (idx, self.remove(idx).unwrap()))
     }

@@ -95,7 +95,7 @@ pub mod test {
         vec.push_shove(1);
         vec.push_shove(2);
 
-        for (index, elem) in vec.iter() {
+        for (index, elem) in vec.iter_indexed() {
             assert_eq!(index, *elem as usize);
         }
 
