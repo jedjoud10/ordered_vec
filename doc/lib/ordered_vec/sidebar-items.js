@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["OrderedVec","A collection that keeps the ordering of its elements, even when deleting an element"]]});

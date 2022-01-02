@@ -3,10 +3,12 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-// A collection that keeps the ordering of it's elements, even when deleting an element
+/// A collection that keeps the ordering of its elements, even when deleting an element
 pub struct OrderedVec<T> {
-    vec: Vec<Option<T>>, // A list of the current elements in the list
-    missing: Vec<usize>, // A list of the indices that contain a null element, so whenever we add a new element, we will add it there
+    /// A list of the current elements in the list
+    vec: Vec<Option<T>>, 
+    /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
+    missing: Vec<usize>, 
 }
 
 impl<T> Clone for OrderedVec<T>
@@ -42,9 +44,9 @@ impl<T> Default for OrderedVec<T> {
     }
 }
 
-// Actual code
+/// Actual code
 impl<T> OrderedVec<T> {
-    // Add an element to the ordered vector
+    /// Add an element to the ordered vector
     pub fn push_shove(&mut self, elem: T) -> usize {
         if self.missing.is_empty() {
             // Add the element normally
@@ -57,7 +59,7 @@ impl<T> OrderedVec<T> {
             return idx;
         }
     }
-    // Get the index of the next element that we will add
+    /// Get the index of the next element that we will add
     pub fn get_next_idx(&self) -> usize {
         // Normal push
         if self.missing.is_empty() {
@@ -66,30 +68,30 @@ impl<T> OrderedVec<T> {
         // Shove
         *self.missing.last().unwrap()
     }
-    // Remove an element that was already added
+    /// Remove an element that was already added
     pub fn remove(&mut self, idx: usize) -> Option<T> {
         self.missing.push(idx);
         let elem = self.vec.get_mut(idx)?;
         let elem = std::mem::take(elem);
         elem
     }
-    // Get a reference to an element in the ordered vector
+    /// Get a reference to an element in the ordered vector
     pub fn get(&self, idx: usize) -> Option<&T> {
         self.vec.get(idx)?.as_ref()
     }
-    // Get a mutable reference to an element in the ordered vector
+    /// Get a mutable reference to an element in the ordered vector
     pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
         self.vec.get_mut(idx)?.as_mut()
     }
-    // Get the number of valid elements in the ordered vector
+    /// Get the number of valid elements in the ordered vector
     pub fn count(&self) -> usize {
         self.vec.len() - self.missing.len()
     }
 }
 
-// Iter magic
+/// Iter magic
 impl<T> OrderedVec<T> {
-    // Get an iterator over the valid elements
+    /// Get an iterator over the valid elements
     pub fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
         self.vec
             .iter()
@@ -99,7 +101,7 @@ impl<T> OrderedVec<T> {
                 None => None,
             })
     }
-    // Get a mutable iterator over the valid elements
+    /// Get a mutable iterator over the valid elements
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
         self.vec
             .iter_mut()
@@ -109,11 +111,11 @@ impl<T> OrderedVec<T> {
                 None => None,
             })
     }
-    // Get an iterator over the indices of the null elements
+    /// Get an iterator over the indices of the null elements
     pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {
         self.missing.iter()
     }
-    // Drain the elements that only return true
+    /// Drain the elements that only return true. This will return just an Iterator of the index and value of the drained elements
     pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (usize, T)> + '_
         where F: FnMut(usize, &T) -> bool
     {
@@ -124,7 +126,7 @@ impl<T> OrderedVec<T> {
     }
 }
 
-// Traits
+/// Traits
 impl<T> Index<usize> for OrderedVec<T> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {

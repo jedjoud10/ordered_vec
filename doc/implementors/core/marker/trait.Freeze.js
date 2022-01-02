@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["lib"] = [{"text":"impl&lt;T&gt; Freeze for <a class=\"struct\" href=\"lib/ordered_vec/struct.OrderedVec.html\" title=\"struct lib::ordered_vec::OrderedVec\">OrderedVec</a>&lt;T&gt;","synthetic":true,"types":["lib::ordered_vec::OrderedVec"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
