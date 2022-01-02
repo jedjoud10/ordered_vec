@@ -113,6 +113,15 @@ impl<T> OrderedVec<T> {
     pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {
         self.missing.iter()
     }
+    // Drain the elements that only return true
+    pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (usize, T)> + '_
+        where F: FnMut(usize, &T) -> bool
+    {
+        // Keep track of which elements should be removed 
+        let indices = self.iter().filter_map(|(index, val)| if filter(index, val) { Some(index) } else { None }).collect::<Vec<usize>>();
+        // Now actually remove them
+        indices.into_iter().map(|idx| (idx, self.remove(idx).unwrap()))
+    }
 }
 
 // Traits
