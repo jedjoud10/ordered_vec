@@ -4,20 +4,24 @@ use std::{
 };
 use bitfield::AtomicSparseBitfield;
 
-use super::command::AtomicIndexedCommand;
+use super::{command::AtomicIndexedCommand, message::AtomicIndexedMessageType};
 
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// However, this collection can be shared between threads
 /// We can add and remove elements from other threads
 pub struct AtomicIndexedOrderedVec<T> {
     /// A list of the current elements in the list
-    pub(crate) vec: Option<Vec<Option<T>>>,
+    pub(crate) vec: RwLock<Vec<Option<T>>>,
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    pub(crate) missing: Arc<RwLock<Vec<usize>>>,
+    pub(crate) missing: RwLock<Vec<usize>>,
     /// A counter that increases every time we add an element to the list in other threads, before the main update
     counter: AtomicUsize,
     /// The current length of the vector 
     length: AtomicUsize,
+    /// The amount of commands that we have sent during this "frame"
+    command_counter: AtomicUsize,
+    /// Keep count of the number of "empty" cells
+    empty_count: AtomicUsize,
     /// An atomic sparse bitfield used to tell the state of each element index. It can either be "valid" or "empty"
     bitfield: AtomicSparseBitfield,
     /// The thread on which we created this ordered vec
@@ -32,11 +36,13 @@ pub struct AtomicIndexedOrderedVec<T> {
 impl<T> Default for AtomicIndexedOrderedVec<T> {
     fn default() -> Self {
         // Create the channel
-        let (tx, rx) = std::sync::mpsc::channel::<AtomicIndexedCommand>();
+        let (tx, rx) = std::sync::mpsc::channel::<AtomicIndexedCommand<T>>();
         Self {
-            vec: Some(Vec::new()),
-            missing: Arc::new(RwLock::new(Vec::new())),
+            vec: RwLock::new(Vec::new()),
+            missing: RwLock::new(Vec::new()),
             counter: AtomicUsize::new(0),
+            command_counter: AtomicUsize::new(0),
+            empty_count: AtomicUsize::new(0),
             bitfield: AtomicSparseBitfield::new(),
             length: AtomicUsize::new(0),
             thread_id: std::thread::current().id(),
@@ -51,142 +57,101 @@ impl<T> Default for AtomicIndexedOrderedVec<T> {
 impl<T> AtomicIndexedOrderedVec<T> {
     /// Add an element to the ordered vector
     /// This will send a message to the "creation thread", but it will also return the proper index
-    pub fn push_shove(&mut self, elem: T) -> usize {
+    pub fn push_shove(&self, elem: T) -> usize {
         // Check if we are on the creation thread
-        if self.creation_thread {
+        let idx = if self.creation_thread {
             // Do this normally
-            if self.missing.as_ref().read().unwrap().is_empty() {
+            if self.missing.read().unwrap().is_empty() {
                 // Add the element normally
-                self.vec.as_mut().unwrap().push(Some(elem));
-                return self.vec.as_ref().unwrap().len() - 1;
+                let mut vec = self.vec.write().unwrap();
+                vec.push(Some(elem));
+                let idx = vec.len() - 1;
+                // Update the bitfield, since this cell has become "valid"
+                self.bitfield.set(idx as u64, true);
+                return idx;
             } else {
                 // If we have some null elements, we can validate the given element there
-                let mut write = self.missing.as_ref().write().unwrap();
-                let vec = self.vec.as_mut().unwrap();
+                let mut write = self.missing.write().unwrap();
+                let mut vec = self.vec.write().unwrap();
                 let idx = write.pop().unwrap();
                 *vec.get_mut(idx).unwrap() = Some(elem);
+                // Update the bitfield, since this cell has become "valid"
+                self.bitfield.set(idx as u64, true);
                 return idx;
             }
         } else {
             // Multi-threaded way
-            let read = self.missing.as_ref().read().unwrap();
+            let read = self.missing.read().unwrap();
             let ctr = self.counter.fetch_add(1, Relaxed);
-            read.get(ctr).cloned().unwrap_or(self.length.load(Relaxed))
-        }       
+            let idx = read.get(ctr).cloned().unwrap_or_else(|| self.length.fetch_add(1, Relaxed));   
+            // Send a message saying that we must add the element here
+            self.tx.send(AtomicIndexedCommand::new(self.command_counter.fetch_add(1, Relaxed), AtomicIndexedMessageType::Add(elem, idx)));   
+            // If the current cell is empty, that means that we will be replacing the cell with this item, so update the empty counter
+            self.empty_count.fetch_sub(1, Relaxed);
+            idx
+        };
+        // Update the bitfield, since this cell has become "valid"
+        self.bitfield.set(idx as u64, true);      
+        idx
     }
     /// Get the index of the next element that we will add
     pub fn get_next_idx(&self) -> usize {
-        // Normal push
-        if self.missing.is_empty() {
-            return self.vec.len();
-        }
-        // Shove
-        *self.missing.last().unwrap()
+        // Check if we are on the creation thread
+        if self.creation_thread {
+            // Do this normally
+            let read = self.missing.read().unwrap();
+            // Normal push
+            if read.is_empty() {
+                let mut write = self.missing.read().unwrap();
+                return write.len();
+            }
+            // Get ID
+            *read.last().unwrap()
+        } else {
+            // Multi-threaded way
+            let read = self.missing.read().unwrap();
+            let ctr = self.counter.load(Relaxed);
+            let idx = read.get(ctr).cloned().unwrap_or_else(|| self.length.load(Relaxed));
+            idx
+        }        
     }
     /// Remove an element that was already added
-    pub fn remove(&mut self, idx: usize) -> Option<T> {
-        self.missing.push(idx);
-        let elem = self.vec.get_mut(idx)?;
-        let elem = std::mem::take(elem);
-        elem
-    }
-    /// Get a reference to an element in the ordered vector
-    pub fn get(&self, idx: usize) -> Option<&T> {
-        self.vec.get(idx)?.as_ref()
-    }
-    /// Get a mutable reference to an element in the ordered vector
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
-        self.vec.get_mut(idx)?.as_mut()
+    /// This will send a message to the creation thread telling us that we must remove an element at a specific index
+    /// If we remove an element on ThreadA, and we try to add an element on ThreadB, the two elements will have different IDs, even though they should have the same ID.
+    pub fn remove(&self, idx: usize) -> Option<()> {
+        // Check if we are on the creation thread
+        if self.creation_thread {
+            let mut write = self.missing.write().ok()?;
+            write.push(idx);
+            let mut vec = self.vec.write().ok()?;
+            let elem = vec.get_mut(idx)?;
+            let elem = std::mem::take(elem);
+            // Update the bitfield
+            self.bitfield.set(idx as u64, false);
+        } else {
+            // Multi-threaded way
+            // Check if the element at the index is actually valid, because if it is not, we have a problem
+            if self.bitfield.get(idx as u64) {
+                // The cell is filled, we can safely remove the element
+                self.tx.send(AtomicIndexedCommand::new(self.command_counter.fetch_add(1, Relaxed), AtomicIndexedMessageType::Remove(idx)));                
+            } else {
+                // The cell is empty, we have a problemo
+                return None;
+            }
+        };
+
+        // Update the bitfield if it came back valid
+        self.empty_count.fetch_add(1, Relaxed);
+        self.bitfield.set(idx as u64, false);
+        Some(())
     }
     /// Get the number of valid elements in the ordered vector
+    /// We must take the atomics in consideration here
     pub fn count(&self) -> usize {
-        self.vec.len() - self.missing.len()
+        self.length.load(Relaxed) - self.empty_count.load(Relaxed)
     }
     /// Get the number of invalid elements in the ordered vector
     pub fn count_invalid(&self) -> usize {
-        self.missing.len()
-    }
-    /// Clear the whole ordered vector
-    pub fn clear(&mut self) -> Vec<Option<T>> {
-        let len = self.vec.len();
-        self.missing = (0..len).collect::<Vec<_>>();
-        // https://users.rust-lang.org/t/how-to-initialize-vec-option-t-with-none/30580
-        let empty = std::iter::repeat_with(|| None)
-            .take(len)
-            .collect::<Vec<_>>();
-
-        let cleared = std::mem::replace(&mut self.vec, empty);
-        cleared
-    }
-}
-
-/// Iter magic
-impl<T> OrderedVec<T> {
-    /// Get an iterator over the valid elements
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.vec.iter().filter_map(|val| val.as_ref())
-    }
-    /// Get an iterator over the valid elements
-    pub fn iter_indexed(&self) -> impl Iterator<Item = (usize, &T)> {
-        self.vec
-            .iter()
-            .enumerate()
-            .filter_map(|(index, val)| match val {
-                Some(val) => Some((index, val)),
-                None => None,
-            })
-    }
-    /// Get a mutable iterator over the valid elements
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.vec.iter_mut().filter_map(|val| val.as_mut())
-    }
-    /// Get a mutable iterator over the valid elements with their index
-    pub fn iter_indexed_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
-        self.vec
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(index, val)| match val {
-                Some(val) => Some((index, val)),
-                None => None,
-            })
-    }
-    /// Get an iterator over the indices of the null elements
-    pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {
-        self.missing.iter()
-    }
-    /// Drain the elements that only return true. This will return just an Iterator of the index and value of the drained elements
-    pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (usize, T)> + '_
-    where
-        F: FnMut(usize, &T) -> bool,
-    {
-        // Keep track of which elements should be removed
-        let indices = self
-            .iter_indexed()
-            .filter_map(|(index, val)| {
-                if filter(index, val) {
-                    Some(index)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<usize>>();
-        // Now actually remove them
-        indices
-            .into_iter()
-            .map(|idx| (idx, self.remove(idx).unwrap()))
-    }
-}
-
-/// Traits
-impl<T> Index<usize> for OrderedVec<T> {
-    type Output = T;
-    fn index(&self, index: usize) -> &Self::Output {
-        self.get(index).unwrap()
-    }
-}
-
-impl<T> IndexMut<usize> for OrderedVec<T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.get_mut(index).unwrap()
+        self.empty_count.load(Relaxed)
     }
 }
