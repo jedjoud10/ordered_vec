@@ -1,11 +1,14 @@
 use std::{
     fmt::Debug,
-    ops::{Index, IndexMut}, sync::{atomic::{AtomicUsize, Ordering::Relaxed}, RwLock, Arc, mpsc::{Sender, Receiver}},
+    ops::{Index, IndexMut}, sync::{atomic::{AtomicUsize, Ordering::Relaxed, AtomicU64}, RwLock, Arc, mpsc::{Sender, Receiver}},
 };
+use bitfield::AtomicSparseBitfield;
+
+use super::command::AtomicIndexedCommand;
 
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// However, this collection can be shared between threads
-/// We can only add elements in those threads for now, we still must delete the elements on the main thread
+/// We can add and remove elements from other threads
 pub struct AtomicIndexedOrderedVec<T> {
     /// A list of the current elements in the list
     pub(crate) vec: Option<Vec<Option<T>>>,
@@ -15,23 +18,26 @@ pub struct AtomicIndexedOrderedVec<T> {
     counter: AtomicUsize,
     /// The current length of the vector 
     length: AtomicUsize,
+    /// An atomic sparse bitfield used to tell the state of each element index. It can either be "valid" or "empty"
+    bitfield: AtomicSparseBitfield,
     /// The thread on which we created this ordered vec
     thread_id: std::thread::ThreadId,
     /// Are we on the creation thread?
     creation_thread: bool,
-    /// Some messaging stuff used to tell the creation thread where and what elements we want to insert
-    tx: Sender<(usize, T)>,
-    rx: Option<Receiver<(usize, T)>>,
+    /// Some messaging stuff used to send commands to the creation thread
+    tx: Sender<AtomicIndexedCommand<T>>,
+    rx: Option<Receiver<AtomicIndexedCommand<T>>>,
 }
 
 impl<T> Default for AtomicIndexedOrderedVec<T> {
     fn default() -> Self {
         // Create the channel
-        let (tx, rx) = std::sync::mpsc::channel::<(usize, T)>();
+        let (tx, rx) = std::sync::mpsc::channel::<AtomicIndexedCommand>();
         Self {
             vec: Some(Vec::new()),
             missing: Arc::new(RwLock::new(Vec::new())),
             counter: AtomicUsize::new(0),
+            bitfield: AtomicSparseBitfield::new(),
             length: AtomicUsize::new(0),
             thread_id: std::thread::current().id(),
             creation_thread: true,
