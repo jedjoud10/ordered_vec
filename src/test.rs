@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::{ShareableOrderedVec, ShareableIndex}};
+    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::{ShareableOrderedVec}};
     use std::{collections::HashMap, sync::{Arc, RwLock}, thread::JoinHandle};
     // Test the speed of the ordered vec
     #[test]
@@ -141,13 +141,13 @@ pub mod test {
     #[test]
     pub fn shareable_test() {
         let mut vec = ShareableOrderedVec::<i32>::default();
-        vec.insert(ShareableIndex::new(0, None), 0);
-        vec.insert(ShareableIndex::new(2, None), 2);
-        vec.insert(ShareableIndex::new(4, None), 4);
+        vec.insert(0, 0);
+        vec.insert(2, 2);
+        vec.insert(4, 4);
         vec.init_update();
         dbg!(&vec);
         // Make a simple channel so we can receive at what location we must insert the elements
-        let (tx, rx) = std::sync::mpsc::channel::<(ShareableIndex, i32)>();
+        let (tx, rx) = std::sync::mpsc::channel::<(usize, i32)>();
 
         let tx = tx.clone();
         let arc = Arc::new(RwLock::new(vec));
@@ -172,11 +172,13 @@ pub mod test {
             x.join().unwrap();
         }
         let mut vec = Arc::try_unwrap(arc).unwrap().into_inner().unwrap();
+
+        vec.finish_update();
         // Receive all the messages, and apply them
         for (idx, elem) in rx.try_iter() {
             vec.insert(idx, elem);
         }
-
+        vec.init_update();
         dbg!(vec);
     }
 }
