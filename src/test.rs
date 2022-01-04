@@ -1,7 +1,11 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::{ShareableOrderedVec}};
-    use std::{collections::HashMap, sync::{Arc, RwLock}, thread::JoinHandle};
+    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, RwLock},
+        thread::JoinHandle,
+    };
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {

@@ -230,38 +230,29 @@
 <span id="229">229</span>
 <span id="230">230</span>
 <span id="231">231</span>
-<span id="232">232</span>
-<span id="233">233</span>
-<span id="234">234</span>
-<span id="235">235</span>
-<span id="236">236</span>
-<span id="237">237</span>
-<span id="238">238</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::shareable::ShareableOrderedVecState</span>;
-<span class="kw">use</span> <span class="ident">std</span>::{
-    <span class="ident">cell::RefCell</span>,
+</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">std</span>::{
     <span class="ident">fmt::Debug</span>,
     <span class="ident">marker::PhantomData</span>,
     <span class="ident">ops</span>::{<span class="ident">Index</span>, <span class="ident">IndexMut</span>},
     <span class="ident">sync</span>::{
-        <span class="ident">atomic</span>::{<span class="ident">AtomicU64</span>, <span class="ident">AtomicUsize</span>, <span class="ident">Ordering::Relaxed</span>},
-        <span class="ident">mpsc</span>::{<span class="ident">Receiver</span>, <span class="ident">Sender</span>},
+        <span class="ident">atomic</span>::{<span class="ident">AtomicUsize</span>, <span class="ident">Ordering::Relaxed</span>},
         <span class="ident">Arc</span>, <span class="ident">RwLock</span>,
     },
 };
 <span class="doccomment">/// A collection that keeps the ordering of its elements, even when deleting an element</span>
 <span class="doccomment">/// However, this collection can be shared between threads</span>
 <span class="doccomment">/// We can *guess* what the index is for an element that we must add</span>
-<span class="doccomment">/// We cannot get, get_mut, remove or push_shove on other threads, only guess the index</span>
-<span class="doccomment">/// We must do those operations using an external messaging system</span>
+<span class="doccomment">/// We can use **get**, and **get_next_id_increment** on other threads, but that is all</span>
+<span class="doccomment">/// We must do the rest of our operations using an external messaging system</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="doccomment">/// A list of the current elements in the list</span>
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">vec</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="doccomment">/// A list of the indices that contain a null element, so whenever we add a new element, we will add it there</span>
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">missing</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">RwLock</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-    <span class="doccomment">/// Some atomics that we must give to the ShareableOrderedVecState</span>
-    <span class="ident">counter</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">AtomicUsize</span><span class="op">&gt;</span>,
-    <span class="ident">length</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">AtomicUsize</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// A counter that increases every time we add an element to the list in other threads, before the main update</span>
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">counter</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">AtomicUsize</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// The current length of the vector. This will increase when we add an elements that is outisde of the current vector</span>
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">length</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">AtomicUsize</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
@@ -287,19 +278,6 @@
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="doccomment">/// Get the shareable state that we can clone and send to other threads</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_shareable</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">ShareableOrderedVecState</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="comment">// Create the bitfield using our missing indices</span>
-        <span class="ident">Arc::new</span>(<span class="ident">ShareableOrderedVecState</span>::<span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-            <span class="ident">missing</span>: <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">clone</span>(),
-            <span class="ident">counter</span>: <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">clone</span>(),
-            <span class="ident">length</span>: <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">clone</span>(),
-            <span class="ident">_phantom</span>: <span class="ident">PhantomData::default</span>(),
-        })
-    }
-}
-
 <span class="doccomment">/// Actual code that we will update on the main thread, or the creation thread</span>
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Add an element to the ordered vector, but at a specific location</span>
@@ -307,14 +285,8 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">insert</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">idx</span>: <span class="ident">usize</span>, <span class="ident">elem</span>: <span class="ident">T</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
         <span class="comment">// Check the length first</span>
         <span class="kw">if</span> <span class="ident">idx</span> <span class="op">&gt;</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() {
-            <span class="comment">// All the empty elements that we will add are pretty much considered empty elements, so we need to update that while adding them</span>
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">write</span>().<span class="ident">unwrap</span>();
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">old_len</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>();
             <span class="comment">// We must resize and add</span>
             <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">resize_with</span>(<span class="ident">idx</span>, <span class="op">|</span><span class="op">|</span> {
-                <span class="comment">// Add the index for the empty value</span>
-                <span class="ident">missing</span>.<span class="ident">push</span>(<span class="ident">old_len</span>);
-                <span class="ident">old_len</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
                 <span class="comment">// We want to fill the gap with just empty values</span>
                 <span class="prelude-val">None</span>
             });
@@ -336,15 +308,21 @@
             <span class="kw">return</span> <span class="ident">last</span>;
         }
     }
-    <span class="doccomment">/// Get the index of the next element that we will add</span>
+    <span class="doccomment">/// Get the index of the next element that we will add. If we call this twice, without inserting any elements, it will not change</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_next_idx</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
         <span class="comment">// Normal push</span>
         <span class="kw">let</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>();
-        <span class="kw">if</span> <span class="ident">missing</span>.<span class="ident">is_empty</span>() {
-            <span class="kw">return</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>();
-        }
-        <span class="comment">// Shove</span>
-        <span class="kw-2">*</span><span class="ident">missing</span>.<span class="ident">last</span>().<span class="ident">unwrap</span>()
+        <span class="ident">missing</span>.<span class="ident">last</span>().<span class="ident">cloned</span>().<span class="ident">unwrap_or</span>(<span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>())
+    }
+    <span class="doccomment">/// Check the next ID where we can add an element, but also increment the counter, so it won&#39;t be the same ID</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_next_id_increment</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
+        <span class="comment">// Try to get an empty cell, if we couldn&#39;t just use the length as the index</span>
+        <span class="kw">let</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">as_ref</span>().<span class="ident">read</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">ctr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">fetch_add</span>(<span class="number">1</span>, <span class="ident">Relaxed</span>);
+        <span class="ident">missing</span>
+            .<span class="ident">get</span>(<span class="ident">ctr</span>)
+            .<span class="ident">cloned</span>()
+            .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">fetch_add</span>(<span class="number">1</span>, <span class="ident">Relaxed</span>))
     }
     <span class="doccomment">/// Remove an element that was already added</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">remove</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">idx</span>: <span class="ident">usize</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
@@ -358,6 +336,14 @@
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">init_update</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) {
         <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">store</span>(<span class="number">0</span>, <span class="ident">Relaxed</span>);
         <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">store</span>(<span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>(), <span class="ident">Relaxed</span>);
+        <span class="comment">// At the start, we must update our missing indices values since they might&#39;ve changed during the execution of external messages</span>
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">write</span>().<span class="ident">unwrap</span>();
+        <span class="kw-2">*</span><span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>
+            .<span class="ident">vec</span>
+            .<span class="ident">iter</span>()
+            .<span class="ident">enumerate</span>()
+            .<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">index</span>, <span class="ident">val</span>)<span class="op">|</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="kw">_</span>) <span class="op">=</span> <span class="ident">val</span> { <span class="prelude-val">None</span> } <span class="kw">else</span> { <span class="prelude-val">Some</span>(<span class="ident">index</span>) })
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span>();
     }
     <span class="doccomment">/// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">finish_update</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) {
@@ -365,7 +351,7 @@
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">write</span>().<span class="ident">unwrap</span>();
         <span class="kw">let</span> <span class="ident">ctr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">load</span>(<span class="ident">Relaxed</span>);
         <span class="comment">// The counter might be greater than the amount of missing cells</span>
-        <span class="kw">if</span> <span class="ident">ctr</span> <span class="op">&gt;</span> <span class="ident">missing</span>.<span class="ident">len</span>() {
+        <span class="kw">if</span> <span class="ident">ctr</span> <span class="op">&gt;</span><span class="op">=</span> <span class="ident">missing</span>.<span class="ident">len</span>() {
             <span class="ident">missing</span>.<span class="ident">clear</span>()
         } <span class="kw">else</span> {
             <span class="ident">missing</span>.<span class="ident">drain</span>(<span class="number">0</span>..<span class="ident">ctr</span>);

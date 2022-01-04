@@ -182,10 +182,19 @@
 <span id="181">181</span>
 <span id="182">182</span>
 <span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
 </pre><pre class="rust"><code><span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
 <span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">test</span> {
     <span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">ordered_vec::OrderedVec</span>, <span class="ident">shareable_ordered_vec::ShareableOrderedVec</span>};
-    <span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">collections::HashMap</span>, <span class="ident">sync::Arc</span>, <span class="ident">thread::JoinHandle</span>};
+    <span class="kw">use</span> <span class="ident">std</span>::{
+        <span class="ident">collections::HashMap</span>,
+        <span class="ident">sync</span>::{<span class="ident">Arc</span>, <span class="ident">RwLock</span>},
+        <span class="ident">thread::JoinHandle</span>,
+    };
     <span class="comment">// Test the speed of the ordered vec</span>
     <span class="attribute">#[<span class="ident">test</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">speed_test</span>() {
@@ -327,23 +336,23 @@
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">vec</span> <span class="op">=</span> <span class="ident">ShareableOrderedVec</span>::<span class="op">&lt;</span><span class="ident">i32</span><span class="op">&gt;</span><span class="ident">::default</span>();
         <span class="ident">vec</span>.<span class="ident">insert</span>(<span class="number">0</span>, <span class="number">0</span>);
         <span class="ident">vec</span>.<span class="ident">insert</span>(<span class="number">2</span>, <span class="number">2</span>);
-        <span class="ident">vec</span>.<span class="ident">insert</span>(<span class="number">6</span>, <span class="number">4</span>);
+        <span class="ident">vec</span>.<span class="ident">insert</span>(<span class="number">4</span>, <span class="number">4</span>);
         <span class="ident">vec</span>.<span class="ident">init_update</span>();
-        <span class="kw">let</span> <span class="ident">shareable</span> <span class="op">=</span> <span class="ident">vec</span>.<span class="ident">get_shareable</span>();
         <span class="macro">dbg!</span>(<span class="kw-2">&amp;</span><span class="ident">vec</span>);
         <span class="comment">// Make a simple channel so we can receive at what location we must insert the elements</span>
         <span class="kw">let</span> (<span class="ident">tx</span>, <span class="ident">rx</span>) <span class="op">=</span> <span class="ident">std::sync::mpsc::channel</span>::<span class="op">&lt;</span>(<span class="ident">usize</span>, <span class="ident">i32</span>)<span class="op">&gt;</span>();
 
         <span class="kw">let</span> <span class="ident">tx</span> <span class="op">=</span> <span class="ident">tx</span>.<span class="ident">clone</span>();
+        <span class="kw">let</span> <span class="ident">arc</span> <span class="op">=</span> <span class="ident">Arc::new</span>(<span class="ident">RwLock::new</span>(<span class="ident">vec</span>));
         <span class="kw">let</span> <span class="ident">thread_join_handles</span> <span class="op">=</span> (<span class="number">0</span>..<span class="number">10</span>)
             .<span class="ident">map</span>(<span class="op">|</span><span class="ident">_x</span><span class="op">|</span> {
                 <span class="comment">// Create a thread</span>
-                <span class="kw">let</span> <span class="ident">vec</span> <span class="op">=</span> <span class="ident">shareable</span>.<span class="ident">clone</span>();
+                <span class="kw">let</span> <span class="ident">arc</span> <span class="op">=</span> <span class="ident">arc</span>.<span class="ident">clone</span>();
                 <span class="kw">let</span> <span class="ident">tx</span> <span class="op">=</span> <span class="ident">tx</span>.<span class="ident">clone</span>();
                 <span class="ident">std::thread::spawn</span>(<span class="kw">move</span> <span class="op">|</span><span class="op">|</span> {
                     <span class="comment">// Change the bitfield a ton of times</span>
                     <span class="kw">for</span> <span class="ident">i</span> <span class="kw">in</span> <span class="number">0</span>..<span class="number">10</span> {
-                        <span class="kw">let</span> <span class="ident">elem_index</span> <span class="op">=</span> <span class="ident">vec</span>.<span class="ident">get_next_id_increment</span>();
+                        <span class="kw">let</span> <span class="ident">elem_index</span> <span class="op">=</span> <span class="ident">arc</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>().<span class="ident">get_next_id_increment</span>();
                         <span class="macro">println!</span>(<span class="string">&quot;Next ID: &#39;{}&#39;. Element is: &#39;{}&#39;&quot;</span>, <span class="ident">elem_index</span>, <span class="ident">i</span> <span class="op">+</span> <span class="ident">_x</span> <span class="op">*</span> <span class="number">10</span>);
                         <span class="ident">tx</span>.<span class="ident">send</span>((<span class="ident">elem_index</span>, <span class="ident">i</span> <span class="op">+</span> <span class="ident">_x</span> <span class="op">*</span> <span class="number">10</span>)).<span class="ident">unwrap</span>();
                     }
@@ -355,13 +364,14 @@
         <span class="kw">for</span> <span class="ident">x</span> <span class="kw">in</span> <span class="ident">thread_join_handles</span> {
             <span class="ident">x</span>.<span class="ident">join</span>().<span class="ident">unwrap</span>();
         }
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">vec</span> <span class="op">=</span> <span class="ident">Arc::try_unwrap</span>(<span class="ident">arc</span>).<span class="ident">unwrap</span>().<span class="ident">into_inner</span>().<span class="ident">unwrap</span>();
 
         <span class="ident">vec</span>.<span class="ident">finish_update</span>();
         <span class="comment">// Receive all the messages, and apply them</span>
         <span class="kw">for</span> (<span class="ident">idx</span>, <span class="ident">elem</span>) <span class="kw">in</span> <span class="ident">rx</span>.<span class="ident">try_iter</span>() {
             <span class="ident">vec</span>.<span class="ident">insert</span>(<span class="ident">idx</span>, <span class="ident">elem</span>);
         }
-
+        <span class="ident">vec</span>.<span class="ident">init_update</span>();
         <span class="macro">dbg!</span>(<span class="ident">vec</span>);
     }
 }

@@ -53,7 +53,10 @@ impl<T> OrderedVec<T> {
     /// Create Self using already existing elements
     pub fn from_valids(vals: Vec<T>) -> Self {
         Self {
-            vec: vals.into_iter().map(|x| Some(x)).collect::<Vec<Option<T>>>(),
+            vec: vals
+                .into_iter()
+                .map(|x| Some(x))
+                .collect::<Vec<Option<T>>>(),
             missing: Vec::new(),
         }
     }

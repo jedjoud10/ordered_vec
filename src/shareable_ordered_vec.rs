@@ -106,7 +106,12 @@ impl<T> ShareableOrderedVec<T> {
         self.length.store(self.vec.len(), Relaxed);
         // At the start, we must update our missing indices values since they might've changed during the execution of external messages
         let mut missing = self.missing.write().unwrap();
-        *missing = self.vec.iter().enumerate().filter_map(|(index, val)| if let Some(_) = val { None } else { Some(index) }).collect::<Vec<usize>>();
+        *missing = self
+            .vec
+            .iter()
+            .enumerate()
+            .filter_map(|(index, val)| if let Some(_) = val { None } else { Some(index) })
+            .collect::<Vec<usize>>();
     }
     /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
     pub fn finish_update(&self) {
