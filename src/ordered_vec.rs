@@ -46,6 +46,17 @@ impl<T> Default for OrderedVec<T> {
 
 /// Actual code
 impl<T> OrderedVec<T> {
+    /// New
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Create Self using already existing elements
+    pub fn from_valids(vals: Vec<T>) -> Self {
+        Self {
+            vec: vals.into_iter().map(|x| Some(x)).collect::<Vec<Option<T>>>(),
+            missing: Vec::new(),
+        }
+    }
     /// Add an element to the ordered vector
     pub fn push_shove(&mut self, elem: T) -> usize {
         if self.missing.is_empty() {
@@ -107,6 +118,10 @@ impl<T> OrderedVec<T> {
 
 /// Iter magic
 impl<T> OrderedVec<T> {
+    /// Convert this into an iterator
+    pub fn into_iter(self) -> impl Iterator<Item = T> {
+        self.vec.into_iter().filter_map(|val| val)
+    }
     /// Get an iterator over the valid elements
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.vec.iter().filter_map(|val| val.as_ref())

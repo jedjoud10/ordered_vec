@@ -1,7 +1,7 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec};
-    use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
+    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::{ShareableOrderedVec, ShareableIndex}};
+    use std::{collections::HashMap, sync::{Arc, RwLock}, thread::JoinHandle};
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {
@@ -141,25 +141,25 @@ pub mod test {
     #[test]
     pub fn shareable_test() {
         let mut vec = ShareableOrderedVec::<i32>::default();
-        vec.insert(0, 0);
-        vec.insert(2, 2);
-        vec.insert(6, 4);
+        vec.insert(ShareableIndex::new(0, None), 0);
+        vec.insert(ShareableIndex::new(2, None), 2);
+        vec.insert(ShareableIndex::new(4, None), 4);
         vec.init_update();
-        let shareable = vec.get_shareable();
         dbg!(&vec);
         // Make a simple channel so we can receive at what location we must insert the elements
-        let (tx, rx) = std::sync::mpsc::channel::<(usize, i32)>();
+        let (tx, rx) = std::sync::mpsc::channel::<(ShareableIndex, i32)>();
 
         let tx = tx.clone();
+        let arc = Arc::new(RwLock::new(vec));
         let thread_join_handles = (0..10)
             .map(|_x| {
                 // Create a thread
-                let vec = shareable.clone();
+                let arc = arc.clone();
                 let tx = tx.clone();
                 std::thread::spawn(move || {
                     // Change the bitfield a ton of times
                     for i in 0..10 {
-                        let elem_index = vec.get_next_id_increment();
+                        let elem_index = arc.read().unwrap().get_next_id_increment();
                         println!("Next ID: '{}'. Element is: '{}'", elem_index, i + _x * 10);
                         tx.send((elem_index, i + _x * 10)).unwrap();
                     }
@@ -171,8 +171,7 @@ pub mod test {
         for x in thread_join_handles {
             x.join().unwrap();
         }
-
-        vec.finish_update();
+        let mut vec = Arc::try_unwrap(arc).unwrap().into_inner().unwrap();
         // Receive all the messages, and apply them
         for (idx, elem) in rx.try_iter() {
             vec.insert(idx, elem);

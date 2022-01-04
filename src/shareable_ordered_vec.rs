@@ -1,35 +1,62 @@
-use crate::shareable::ShareableOrderedVecState;
 use std::{
-    cell::RefCell,
-    fmt::Debug,
+    fmt::{Debug},
     marker::PhantomData,
     ops::{Index, IndexMut},
     sync::{
-        atomic::{AtomicU64, AtomicUsize, Ordering::Relaxed},
-        mpsc::{Receiver, Sender},
+        atomic::{AtomicUsize, Ordering::Relaxed},
         Arc, RwLock,
     },
 };
+
+use crate::simple::OrderedVec;
+
+
+/// Some sort of shareable index, that might contain the index of the missing index.
+/// Yea, pretty confusing
+#[derive(Debug)]
+pub struct ShareableIndex {
+    /// The actual index of the element. This is just a wrapper around it
+    pub(crate) index: usize,
+    // If we have replaced an empty cell with the current index's element, this will be that cell's index in the "missing" vector
+    pub(crate) missing_indices_idx: Option<usize>,
+}
+
+impl std::fmt::Display for ShareableIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.index)
+    }
+}
+
+impl ShareableIndex {
+    /// Create a new shareable index using a normal index and a missing index index
+    pub(crate) fn new(index: usize, missing_indices_idx: Option<usize>) -> Self {
+        Self {
+            index, missing_indices_idx
+        }
+    }
+}
+
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// However, this collection can be shared between threads
 /// We can *guess* what the index is for an element that we must add
-/// We cannot get, get_mut, remove or push_shove on other threads, only guess the index
-/// We must do those operations using an external messaging system
+/// We can use **get**, and **get_next_id_increment** on other threads, but that is all
+/// We must do the rest of our operations using an external messaging system
 pub struct ShareableOrderedVec<T> {
     /// A list of the current elements in the list
     pub(crate) vec: Vec<Option<T>>,
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    pub(crate) missing: Arc<RwLock<Vec<usize>>>,
-    /// Some atomics that we must give to the ShareableOrderedVecState
-    counter: Arc<AtomicUsize>,
-    length: Arc<AtomicUsize>,
+    pub(crate) missing: Arc<RwLock<OrderedVec<usize>>>,
+    /// A counter that increases every time we add an element to the list in other threads, before the main update
+    pub(crate) counter: Arc<AtomicUsize>,
+    /// The current length of the vector. This will increase when we add an elements that is outisde of the current vector
+    pub(crate) length: Arc<AtomicUsize>,
 }
 
 impl<T> Default for ShareableOrderedVec<T> {
     fn default() -> Self {
         Self {
             vec: Vec::new(),
-            missing: Arc::new(RwLock::new(Vec::new())),
+            missing: Arc::new(RwLock::new(OrderedVec::new())),
             counter: Arc::new(AtomicUsize::new(0)),
             length: Arc::new(AtomicUsize::new(0)),
         }
@@ -48,25 +75,15 @@ where
     }
 }
 
-impl<T> ShareableOrderedVec<T> {
-    /// Get the shareable state that we can clone and send to other threads
-    pub fn get_shareable(&self) -> Arc<ShareableOrderedVecState<T>> {
-        // Create the bitfield using our missing indices
-        Arc::new(ShareableOrderedVecState::<T> {
-            missing: self.missing.clone(),
-            counter: self.counter.clone(),
-            length: self.length.clone(),
-            _phantom: PhantomData::default(),
-        })
-    }
-}
-
 /// Actual code that we will update on the main thread, or the creation thread
 impl<T> ShareableOrderedVec<T> {
     /// Add an element to the ordered vector, but at a specific location
     /// This will return the last element that was at that position, if possible
-    pub fn insert(&mut self, idx: usize, elem: T) -> Option<T> {
+    pub fn insert(&mut self, idx: ShareableIndex, elem: T) -> Option<T> {
         // Check the length first
+        dbg!(&idx);
+        let missing_indices_idx = idx.missing_indices_idx;
+        let idx = idx.index;
         if idx >= self.vec.len() {
             // All the empty elements that we will add are pretty much considered empty elements, so we need to update that while adding them
             let mut missing = self.missing.write().unwrap();
@@ -74,7 +91,7 @@ impl<T> ShareableOrderedVec<T> {
             // We must resize and add
             self.vec.resize_with(idx, || {
                 // Add the index for the empty value
-                missing.push(old_len);
+                missing.push_shove(old_len);
                 old_len += 1;
                 // We want to fill the gap with just empty values
                 None
@@ -86,7 +103,12 @@ impl<T> ShareableOrderedVec<T> {
             }
             return None;
         } else {
-            // Simple overwrite
+            // This can either be an overwrite to a missing cell or a write to empty cells that were created using the resize
+            if let Some(missing_indices_idx) = missing_indices_idx {
+                // This is an overwrite to an empty cell
+            } else {
+                // This is an overwrite to a cell that isn't actually considered empty, but it actually is
+            }
             // If we have an element there, we also panic
             if self.vec.get(idx).unwrap().is_some() {
                 panic!()
@@ -94,43 +116,46 @@ impl<T> ShareableOrderedVec<T> {
             // Replace
             let dest = self.vec.get_mut(idx).unwrap();
             let last = std::mem::replace(dest, Some(elem));
+            // We have replaced an empty slot, so we must update our missing cells
+            let mut missing = self.missing.write().unwrap();
+            // We are fine since we remove the elements starting from the end of the list anyways
+            missing.remove(missing_indices_idx.unwrap());
             return last;
         }
     }
-    /// Get the index of the next element that we will add
+    /// Get the index of the next element that we will add. If we call this twice, without inserting any elements, it will not change
     pub fn get_next_idx(&self) -> usize {
         // Normal push
         let missing = self.missing.read().unwrap();
-        if missing.is_empty() {
-            return self.vec.len();
+        missing.iter().last().cloned().unwrap_or(self.vec.len())
+    }
+    /// Check the next ID where we can add an element, but also increment the counter, so it won't be the same ID
+    pub fn get_next_id_increment(&self) -> ShareableIndex {
+        // Try to get an empty cell, if we couldn't just use the length as the index
+        let missing = self.missing.as_ref().read().unwrap();
+        let ctr = self.counter.fetch_add(1, Relaxed);
+        let missing_idx = missing.count().checked_sub(ctr);
+        if let Some(Some(&idx)) = missing_idx.map(|x| missing.get(x)) {
+            // We must replace an already existing "empty" cell
+            ShareableIndex::new(idx, Some(missing.count() - ctr))
+        } else {
+            // We must add the cell at the end of the list
+            let len = self.length.fetch_add(1, Relaxed);
+            ShareableIndex::new(len, None)
         }
-        // Shove
-        *missing.last().unwrap()
     }
     /// Remove an element that was already added
     pub fn remove(&mut self, idx: usize) -> Option<T> {
         let mut missing = self.missing.write().unwrap();
-        missing.push(idx);
+        missing.push_shove(idx);
         let elem = self.vec.get_mut(idx)?;
         let elem = std::mem::take(elem);
         elem
     }
     /// Update the atomic counters at the start, before we do anything on the other threads.
-    pub fn init_update(&self) {
+    pub fn init_update(&mut self) {
         self.counter.store(0, Relaxed);
         self.length.store(self.vec.len(), Relaxed);
-    }
-    /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
-    pub fn finish_update(&self) {
-        // Since we have read using the atomic counter, we can just remove the missing ID before it
-        let mut missing = self.missing.write().unwrap();
-        let ctr = self.counter.load(Relaxed);
-        // The counter might be greater than the amount of missing cells
-        if ctr > missing.len() {
-            missing.clear()
-        } else {
-            missing.drain(0..ctr);
-        }
     }
     /// Get a reference to an element in the ordered vector
     pub fn get(&self, idx: usize) -> Option<&T> {
@@ -143,18 +168,18 @@ impl<T> ShareableOrderedVec<T> {
     /// Get the number of valid elements in the ordered vector
     pub fn count(&self) -> usize {
         let missing = self.missing.read().unwrap();
-        self.vec.len() - missing.len()
+        self.vec.len() - missing.count()
     }
     /// Get the number of invalid elements in the ordered vector
     pub fn count_invalid(&self) -> usize {
         let missing = self.missing.read().unwrap();
-        missing.len()
+        missing.count()
     }
     /// Clear the whole ordered vector
     pub fn clear(&mut self) -> Vec<Option<T>> {
         let len = self.vec.len();
         let mut missing = self.missing.write().unwrap();
-        *missing = (0..len).collect::<Vec<_>>();
+        *missing = OrderedVec::from_valids((0..len).collect::<Vec<_>>());
         // https://users.rust-lang.org/t/how-to-initialize-vec-option-t-with-none/30580
         let empty = std::iter::repeat_with(|| None)
             .take(len)
