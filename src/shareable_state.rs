@@ -1,4 +1,11 @@
-use std::{sync::{Arc, atomic::{AtomicUsize, Ordering::Relaxed}, RwLock}, cell::RefCell, marker::PhantomData};
+use std::{
+    cell::RefCell,
+    marker::PhantomData,
+    sync::{
+        atomic::{AtomicUsize, Ordering::Relaxed},
+        Arc, RwLock,
+    },
+};
 
 /// A shareable state that can be created by a ShareableOrderedVec
 /// This helps since we cannot get, get_mut, remove or push_shove on other threads, so it makes it a bit safer
@@ -23,6 +30,9 @@ impl<T> ShareableOrderedVecState<T> {
         // Try to get an empty cell, if we couldn't just use the length as the index
         let missing = self.missing.as_ref().read().unwrap();
         let ctr = self.counter.fetch_add(1, Relaxed);
-        missing.get(ctr).cloned().unwrap_or_else(|| self.length.fetch_add(1, Relaxed))
+        missing
+            .get(ctr)
+            .cloned()
+            .unwrap_or_else(|| self.length.fetch_add(1, Relaxed))
     }
 }
