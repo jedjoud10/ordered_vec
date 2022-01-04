@@ -1,6 +1,6 @@
 pub mod test {
-    use crate::ordered_vec::OrderedVec;
-    use std::collections::HashMap;
+    use crate::{ordered_vec::OrderedVec, atomic::AtomicIndexedOrderedVec};
+    use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {
@@ -135,5 +135,29 @@ pub mod test {
             vec.vec,
             vec![Some(2), Some(1), Some(0), Some(4), Some(5), Some(6)]
         )
+    }
+    // Testing the atomic ordered vec
+    #[test]
+    pub fn atomic_test() {
+        let vec = Arc::new(AtomicIndexedOrderedVec::<f32>::default());        
+        let thread_join_handles = (0..10)
+        .map(|_| {
+            // Create a thread
+            let vec = vec.clone();
+            std::thread::spawn(move || {
+                // Change the bitfield a ton of times
+                for i in 0..1000 {
+                    vec.push_shove(0.0);
+                }
+            })
+        })
+        .collect::<Vec<JoinHandle<()>>>();
+        
+        // Join up all the threads
+        for x in thread_join_handles {
+            x.join().unwrap();
+        }
+        // Remember to update
+        vec.update();
     }
 }

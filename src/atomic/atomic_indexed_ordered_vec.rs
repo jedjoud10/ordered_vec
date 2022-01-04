@@ -52,7 +52,6 @@ impl<T> Default for AtomicIndexedOrderedVec<T> {
         }
     }
 }
-
 /// Actual code
 impl<T> AtomicIndexedOrderedVec<T> {
     /// Add an element to the ordered vector
@@ -85,7 +84,7 @@ impl<T> AtomicIndexedOrderedVec<T> {
             let ctr = self.counter.fetch_add(1, Relaxed);
             let idx = read.get(ctr).cloned().unwrap_or_else(|| self.length.fetch_add(1, Relaxed));   
             // Send a message saying that we must add the element here
-            self.tx.send(AtomicIndexedCommand::new(self.command_counter.fetch_add(1, Relaxed), AtomicIndexedMessageType::Add(elem, idx)));   
+            self.tx.send(AtomicIndexedCommand::new(self.command_counter.fetch_add(1, Relaxed), AtomicIndexedMessageType::Add(elem, idx))).unwrap();   
             // If the current cell is empty, that means that we will be replacing the cell with this item, so update the empty counter
             self.empty_count.fetch_sub(1, Relaxed);
             idx
@@ -102,8 +101,8 @@ impl<T> AtomicIndexedOrderedVec<T> {
             let read = self.missing.read().unwrap();
             // Normal push
             if read.is_empty() {
-                let mut write = self.missing.read().unwrap();
-                return write.len();
+                let vec = self.vec.read().unwrap();
+                return vec.len();
             }
             // Get ID
             *read.last().unwrap()
@@ -123,17 +122,12 @@ impl<T> AtomicIndexedOrderedVec<T> {
         if self.creation_thread {
             let mut write = self.missing.write().ok()?;
             write.push(idx);
-            let mut vec = self.vec.write().ok()?;
-            let elem = vec.get_mut(idx)?;
-            let elem = std::mem::take(elem);
-            // Update the bitfield
-            self.bitfield.set(idx as u64, false);
         } else {
             // Multi-threaded way
             // Check if the element at the index is actually valid, because if it is not, we have a problem
             if self.bitfield.get(idx as u64) {
                 // The cell is filled, we can safely remove the element
-                self.tx.send(AtomicIndexedCommand::new(self.command_counter.fetch_add(1, Relaxed), AtomicIndexedMessageType::Remove(idx)));                
+                self.tx.send(AtomicIndexedCommand::new(self.command_counter.fetch_add(1, Relaxed), AtomicIndexedMessageType::Remove(idx))).unwrap();                
             } else {
                 // The cell is empty, we have a problemo
                 return None;
@@ -154,4 +148,34 @@ impl<T> AtomicIndexedOrderedVec<T> {
     pub fn count_invalid(&self) -> usize {
         self.empty_count.load(Relaxed)
     }
+    /// Update the atomic indexed ordered vec by reading all the commands, reseting the atomics, and applying the commands
+    /// This must be ran on the creation thread
+    pub fn update(&self) {
+        // Read all the commands and wait for them
+        let mut command_count = self.command_counter.load(Relaxed);
+        // Reset the atomics
+        self.command_counter.store(0, Relaxed);
+        self.counter.store(0, Relaxed);
+        // Wait for the commands now
+        let mut cbuffer: Vec<AtomicIndexedCommand<T>> = Vec::new(); 
+        while command_count > 0 {
+            if let Ok(x) = self.rx.as_ref().unwrap().recv() {
+                // Take the command and buffer it
+                command_count -= 1;
+                cbuffer.push(x);
+            }
+        }
+        // Sort the commands
+        cbuffer.sort_by(|a, b|  usize::cmp(&a.command_id, &b.command_id));
+
+        // Apply the commands
+        for command in cbuffer {
+            match command.message {
+                AtomicIndexedMessageType::Add(elem, id) => { self.push_shove(elem); },
+                AtomicIndexedMessageType::Remove(id) => { self.remove(id); },
+            }
+        }
+        let vec = self.vec.read().unwrap();
+        self.length.store(vec.len(), Relaxed);
+    } 
 }

@@ -7,8 +7,8 @@ static COMMAND_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Some channel command that we can send to the creation thread
 pub(crate) struct AtomicIndexedCommand<T> {
     // Command ID, and Message Type
-    command_id: usize,
-    message: AtomicIndexedMessageType<T>,
+    pub(crate) command_id: usize,
+    pub(crate) message: AtomicIndexedMessageType<T>,
 }
 
 impl<T> AtomicIndexedCommand<T> {
