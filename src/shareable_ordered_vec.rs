@@ -9,7 +9,7 @@ use std::{
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// However, this collection can be shared between threads
 /// We can *guess* what the index is for an element that we must add
-/// We can use **get**, and **get_next_id_increment** on other threads, but that is all
+/// We can use **get**, and **get_next_idx_increment** on other threads, but that is all
 /// We must do the rest of our operations using an external messaging system
 pub struct ShareableOrderedVec<T> {
     /// A list of the current elements in the list
@@ -45,10 +45,9 @@ where
     }
 }
 
-/// Actual code that we will update on the main thread, or the creation thread
 impl<T> ShareableOrderedVec<T> {
-    /// Add an element to the ordered vector, but at a specific location
-    /// This will return the last element that was at that position, if possible
+    /// Add an element to the ordered vector, but at a specific index
+    /// This will return the last element that was at that index, if possible
     pub fn insert(&mut self, idx: usize, elem: T) -> Option<T> {
         // Check the length first
         if idx >= self.vec.len() {
@@ -81,8 +80,8 @@ impl<T> ShareableOrderedVec<T> {
         let missing = self.missing.read().unwrap();
         missing.last().cloned().unwrap_or(self.vec.len())
     }
-    /// Check the next ID where we can add an element, but also increment the counter, so it won't be the same ID
-    pub fn get_next_id_increment(&self) -> usize {
+    /// Check the next index where we can add an element, but also increment the counter, so it won't be the same index
+    pub fn get_next_idx_increment(&self) -> usize {
         // Try to get an empty cell, if we couldn't just use the length as the index
         let missing = self.missing.as_ref().read().unwrap();
         let ctr = self.counter.fetch_add(1, Relaxed);
@@ -114,7 +113,7 @@ impl<T> ShareableOrderedVec<T> {
     }
     /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
     pub fn finish_update(&self) {
-        // Since we have read using the atomic counter, we can just remove the missing ID before it
+        // Since we have read using the atomic counter, we can just remove the missing index before it
         let mut missing = self.missing.write().unwrap();
         let ctr = self.counter.load(Relaxed);
         // The counter might be greater than the amount of missing cells

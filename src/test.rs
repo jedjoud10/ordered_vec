@@ -163,7 +163,7 @@ pub mod test {
                 std::thread::spawn(move || {
                     // Change the bitfield a ton of times
                     for i in 0..10 {
-                        let elem_index = arc.read().unwrap().get_next_id_increment();
+                        let elem_index = arc.read().unwrap().get_next_idx_increment();
                         println!("Next ID: '{}'. Element is: '{}'", elem_index, i + _x * 10);
                         tx.send((elem_index, i + _x * 10)).unwrap();
                     }
