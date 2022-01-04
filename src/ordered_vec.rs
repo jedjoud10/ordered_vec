@@ -86,7 +86,7 @@ impl<T> OrderedVec<T> {
     pub fn remove(&mut self, idx: usize) -> Option<T> {
         self.missing.push(idx);
         let elem = self.vec.get_mut(idx)?;
-        
+
         std::mem::take(elem)
     }
     /// Get a reference to an element in the ordered vector
@@ -114,7 +114,6 @@ impl<T> OrderedVec<T> {
             .take(len)
             .collect::<Vec<_>>();
 
-        
         std::mem::replace(&mut self.vec, empty)
     }
 }

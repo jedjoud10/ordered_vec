@@ -71,7 +71,7 @@ impl<T> ShareableOrderedVec<T> {
             }
             // Replace
             let dest = self.vec.get_mut(idx).unwrap();
-            
+
             std::mem::replace(dest, Some(elem))
         }
     }
@@ -96,7 +96,7 @@ impl<T> ShareableOrderedVec<T> {
         let mut missing = self.missing.write().unwrap();
         missing.push(idx);
         let elem = self.vec.get_mut(idx)?;
-        
+
         std::mem::take(elem)
     }
     /// Update the atomic counters at the start, before we do anything on the other threads.
@@ -152,7 +152,6 @@ impl<T> ShareableOrderedVec<T> {
             .take(len)
             .collect::<Vec<_>>();
 
-        
         std::mem::replace(&mut self.vec, empty)
     }
 }
