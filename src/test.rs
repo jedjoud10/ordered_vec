@@ -1,6 +1,6 @@
 pub mod test {
-    use crate::ordered_vec::OrderedVec;
-    use std::collections::HashMap;
+    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec};
+    use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {
@@ -135,5 +135,48 @@ pub mod test {
             vec.vec,
             vec![Some(2), Some(1), Some(0), Some(4), Some(5), Some(6)]
         )
+    }
+    // Test out the shareable ordered vec
+    #[test]
+    pub fn shareable_test() {
+        let mut vec = ShareableOrderedVec::<i32>::default();
+        vec.insert(0, 0);
+        vec.insert(2, 2);
+        vec.insert(6, 4);  
+        vec.init_update();
+        let shareable = vec.get_shareable();
+        dbg!(&vec);
+        // Make a simple channel so we can receive at what location we must insert the elements
+        let (tx, rx) = std::sync::mpsc::channel::<(usize, i32)>();
+
+        let tx = tx.clone();
+        let thread_join_handles = (0..10)
+        .map(|_x| {
+            // Create a thread
+            let vec = shareable.clone();
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                // Change the bitfield a ton of times
+                for i in 0..10 {
+                    let elem_index = vec.get_next_id_increment();
+                    println!("Next ID: '{}'. Element is: '{}'", elem_index, i + _x * 10);
+                    tx.send((elem_index, i + _x * 10)).unwrap();
+                }
+            })
+        })
+        .collect::<Vec<JoinHandle<()>>>();
+        
+        // Join up all the threads
+        for x in thread_join_handles {
+            x.join().unwrap();
+        }
+
+        vec.finish_update();
+        // Receive all the messages, and apply them
+        for (idx, elem) in rx.try_iter() {
+            vec.insert(idx, elem);
+        }   
+
+        dbg!(vec);
     }
 }
