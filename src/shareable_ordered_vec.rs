@@ -1,12 +1,15 @@
-use std::{
-    fmt::Debug,
-    ops::{Index, IndexMut}, sync::{atomic::{AtomicUsize, Ordering::Relaxed, AtomicU64}, RwLock, Arc, mpsc::{Sender, Receiver}}, marker::PhantomData, cell::RefCell,
-};
-
-use bitfield::AtomicSparseBitfield;
-
 use crate::shareable::ShareableOrderedVecState;
-
+use std::{
+    cell::RefCell,
+    fmt::Debug,
+    marker::PhantomData,
+    ops::{Index, IndexMut},
+    sync::{
+        atomic::{AtomicU64, AtomicUsize, Ordering::Relaxed},
+        mpsc::{Receiver, Sender},
+        Arc, RwLock,
+    },
+};
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// However, this collection can be shared between threads
 /// We can *guess* what the index is for an element that we must add
@@ -16,19 +19,19 @@ pub struct ShareableOrderedVec<T> {
     /// A list of the current elements in the list
     pub(crate) vec: Vec<Option<T>>,
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    pub(crate) missing: Arc<RwLock<Vec<usize>>>,    
-    /// Some atomics that we must give to the ShareableOrderedVecState 
+    pub(crate) missing: Arc<RwLock<Vec<usize>>>,
+    /// Some atomics that we must give to the ShareableOrderedVecState
     counter: Arc<AtomicUsize>,
     length: Arc<AtomicUsize>,
 }
 
 impl<T> Default for ShareableOrderedVec<T> {
     fn default() -> Self {
-        Self { 
+        Self {
             vec: Vec::new(),
             missing: Arc::new(RwLock::new(Vec::new())),
             counter: Arc::new(AtomicUsize::new(0)),
-            length: Arc::new(AtomicUsize::new(0))
+            length: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -46,14 +49,14 @@ where
 }
 
 impl<T> ShareableOrderedVec<T> {
-    /// Get the shareable state that we can clone and send to other threads 
+    /// Get the shareable state that we can clone and send to other threads
     pub fn get_shareable(&self) -> Arc<ShareableOrderedVecState<T>> {
         // Create the bitfield using our missing indices
         Arc::new(ShareableOrderedVecState::<T> {
             missing: self.missing.clone(),
             counter: self.counter.clone(),
             length: self.length.clone(),
-            _phantom: PhantomData::default()
+            _phantom: PhantomData::default(),
         })
     }
 }
@@ -71,22 +74,26 @@ impl<T> ShareableOrderedVec<T> {
             // We must resize and add
             self.vec.resize_with(idx, || {
                 // Add the index for the empty value
-                missing.push(old_len); 
+                missing.push(old_len);
                 old_len += 1;
                 // We want to fill the gap with just empty values
                 None
             });
             // Actually insert the elements
             self.vec.push(Some(elem));
-            if self.vec.len() - 1 != idx { panic!() }
+            if self.vec.len() - 1 != idx {
+                panic!()
+            }
             return None;
         } else {
             // Simple overwrite
             // If we have an element there, we also panic
-            if self.vec.get(idx).unwrap().is_some() { panic!() }
+            if self.vec.get(idx).unwrap().is_some() {
+                panic!()
+            }
             // Replace
             let dest = self.vec.get_mut(idx).unwrap();
-            let last = std::mem::replace(dest, Some(elem));  
+            let last = std::mem::replace(dest, Some(elem));
             return last;
         }
     }
@@ -111,7 +118,7 @@ impl<T> ShareableOrderedVec<T> {
     /// Update the atomic counters at the start, before we do anything on the other threads.
     pub fn init_update(&self) {
         self.counter.store(0, Relaxed);
-        self.length.store(self.vec.len(), Relaxed); 
+        self.length.store(self.vec.len(), Relaxed);
     }
     /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
     pub fn finish_update(&self) {
@@ -119,7 +126,9 @@ impl<T> ShareableOrderedVec<T> {
         let mut missing = self.missing.write().unwrap();
         let ctr = self.counter.load(Relaxed);
         // The counter might be greater than the amount of missing cells
-        if ctr > missing.len() { missing.clear() } else {
+        if ctr > missing.len() {
+            missing.clear()
+        } else {
             missing.drain(0..ctr);
         }
     }

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src\ordered_vec.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>ordered_vec.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script src="../../crates.js"></script><script defer src="../../main.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src\shareable_ordered_vec.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>shareable_ordered_vec.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script src="../../crates.js"></script><script defer src="../../main.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script>
     <noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a class="sidebar-logo" href='../../lib/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container rust-logo" href='../../lib/index.html'><img src='../../rust-logo.png' alt='logo'></a><nav class="sub"><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu" title="themes"><img width="18" height="18" alt="Pick another theme!" src="../../brush.svg"></button><div id="theme-choices" role="menu"></div></div><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" id="help-button" title="help">?</button><a id="settings-menu" href="../../settings.html" title="settings"><img width="18" height="18" alt="Change settings" src="../../wheel.svg"></a></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
@@ -176,82 +176,200 @@
 <span id="175">175</span>
 <span id="176">176</span>
 <span id="177">177</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">std</span>::{
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::shareable::ShareableOrderedVecState</span>;
+<span class="kw">use</span> <span class="ident">std</span>::{
+    <span class="ident">cell::RefCell</span>,
     <span class="ident">fmt::Debug</span>,
+    <span class="ident">marker::PhantomData</span>,
     <span class="ident">ops</span>::{<span class="ident">Index</span>, <span class="ident">IndexMut</span>},
+    <span class="ident">sync</span>::{
+        <span class="ident">atomic</span>::{<span class="ident">AtomicU64</span>, <span class="ident">AtomicUsize</span>, <span class="ident">Ordering::Relaxed</span>},
+        <span class="ident">mpsc</span>::{<span class="ident">Receiver</span>, <span class="ident">Sender</span>},
+        <span class="ident">Arc</span>, <span class="ident">RwLock</span>,
+    },
 };
-
 <span class="doccomment">/// A collection that keeps the ordering of its elements, even when deleting an element</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+<span class="doccomment">/// However, this collection can be shared between threads</span>
+<span class="doccomment">/// We can *guess* what the index is for an element that we must add</span>
+<span class="doccomment">/// We cannot get, get_mut, remove or push_shove on other threads, only guess the index</span>
+<span class="doccomment">/// We must do those operations using an external messaging system</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="doccomment">/// A list of the current elements in the list</span>
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">vec</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span>,
     <span class="doccomment">/// A list of the indices that contain a null element, so whenever we add a new element, we will add it there</span>
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">missing</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">missing</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">RwLock</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="doccomment">/// Some atomics that we must give to the ShareableOrderedVecState</span>
+    <span class="ident">counter</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">AtomicUsize</span><span class="op">&gt;</span>,
+    <span class="ident">length</span>: <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">AtomicUsize</span><span class="op">&gt;</span>,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Clone</span> <span class="kw">for</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>
-<span class="kw">where</span>
-    <span class="ident">T</span>: <span class="ident">Clone</span>,
-{
-    <span class="kw">fn</span> <span class="ident">clone</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
-            <span class="ident">vec</span>: <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">clone</span>(),
-            <span class="ident">missing</span>: <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">clone</span>(),
+            <span class="ident">vec</span>: <span class="ident">Vec::new</span>(),
+            <span class="ident">missing</span>: <span class="ident">Arc::new</span>(<span class="ident">RwLock::new</span>(<span class="ident">Vec::new</span>())),
+            <span class="ident">counter</span>: <span class="ident">Arc::new</span>(<span class="ident">AtomicUsize::new</span>(<span class="number">0</span>)),
+            <span class="ident">length</span>: <span class="ident">Arc::new</span>(<span class="ident">AtomicUsize::new</span>(<span class="number">0</span>)),
         }
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Debug</span> <span class="kw">for</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Debug</span> <span class="kw">for</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>
 <span class="kw">where</span>
     <span class="ident">T</span>: <span class="ident">Debug</span>,
 {
     <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">std::fmt::Formatter</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span>) -&gt; <span class="ident">std::fmt::Result</span> {
-        <span class="ident">f</span>.<span class="ident">debug_struct</span>(<span class="string">&quot;OrderedVec&quot;</span>)
+        <span class="ident">f</span>.<span class="ident">debug_struct</span>(<span class="string">&quot;ShareableOrderedVec&quot;</span>)
             .<span class="ident">field</span>(<span class="string">&quot;vec&quot;</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">vec</span>)
-            .<span class="ident">field</span>(<span class="string">&quot;missing&quot;</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">missing</span>)
+            .<span class="ident">field</span>(<span class="string">&quot;missing&quot;</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">as_ref</span>().<span class="ident">read</span>().<span class="ident">unwrap</span>())
             .<span class="ident">finish</span>()
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">vec</span>: <span class="ident">Vec::new</span>(),
-            <span class="ident">missing</span>: <span class="ident">Vec::new</span>(),
-        }
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// Get the shareable state that we can clone and send to other threads</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_shareable</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">Arc</span><span class="op">&lt;</span><span class="ident">ShareableOrderedVecState</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="comment">// Create the bitfield using our missing indices</span>
+        <span class="ident">Arc::new</span>(<span class="ident">ShareableOrderedVecState</span>::<span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+            <span class="ident">missing</span>: <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">clone</span>(),
+            <span class="ident">counter</span>: <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">clone</span>(),
+            <span class="ident">length</span>: <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">clone</span>(),
+            <span class="ident">_phantom</span>: <span class="ident">PhantomData::default</span>(),
+        })
     }
 }
 
-<span class="doccomment">/// Actual code</span>
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="doccomment">/// Add an element to the ordered vector</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push_shove</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">elem</span>: <span class="ident">T</span>) -&gt; <span class="ident">usize</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">is_empty</span>() {
-            <span class="comment">// Add the element normally</span>
+<span class="doccomment">/// Actual code that we will update on the main thread, or the creation thread</span>
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// Add an element to the ordered vector, but at a specific location</span>
+    <span class="doccomment">/// This will return the last element that was at that position, if possible</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">insert</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">idx</span>: <span class="ident">usize</span>, <span class="ident">elem</span>: <span class="ident">T</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+        <span class="comment">// Check the length first</span>
+        <span class="kw">if</span> <span class="ident">idx</span> <span class="op">&gt;</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() {
+            <span class="comment">// All the empty elements that we will add are pretty much considered empty elements, so we need to update that while adding them</span>
+            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">write</span>().<span class="ident">unwrap</span>();
+            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">old_len</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>();
+            <span class="comment">// We must resize and add</span>
+            <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">resize_with</span>(<span class="ident">idx</span>, <span class="op">|</span><span class="op">|</span> {
+                <span class="comment">// Add the index for the empty value</span>
+                <span class="ident">missing</span>.<span class="ident">push</span>(<span class="ident">old_len</span>);
+                <span class="ident">old_len</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
+                <span class="comment">// We want to fill the gap with just empty values</span>
+                <span class="prelude-val">None</span>
+            });
+            <span class="comment">// Actually insert the elements</span>
             <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">push</span>(<span class="prelude-val">Some</span>(<span class="ident">elem</span>));
-            <span class="kw">return</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() <span class="op">-</span> <span class="number">1</span>;
+            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() <span class="op">-</span> <span class="number">1</span> <span class="op">!</span><span class="op">=</span> <span class="ident">idx</span> {
+                <span class="macro">panic!</span>()
+            }
+            <span class="kw">return</span> <span class="prelude-val">None</span>;
         } <span class="kw">else</span> {
-            <span class="comment">// If we have some null elements, we can validate the given element there</span>
-            <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">pop</span>().<span class="ident">unwrap</span>();
-            <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">get_mut</span>(<span class="ident">idx</span>).<span class="ident">unwrap</span>() <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">elem</span>);
-            <span class="kw">return</span> <span class="ident">idx</span>;
+            <span class="comment">// Simple overwrite</span>
+            <span class="comment">// If we have an element there, we also panic</span>
+            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">get</span>(<span class="ident">idx</span>).<span class="ident">unwrap</span>().<span class="ident">is_some</span>() {
+                <span class="macro">panic!</span>()
+            }
+            <span class="comment">// Replace</span>
+            <span class="kw">let</span> <span class="ident">dest</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">get_mut</span>(<span class="ident">idx</span>).<span class="ident">unwrap</span>();
+            <span class="kw">let</span> <span class="ident">last</span> <span class="op">=</span> <span class="ident">std::mem::replace</span>(<span class="ident">dest</span>, <span class="prelude-val">Some</span>(<span class="ident">elem</span>));
+            <span class="kw">return</span> <span class="ident">last</span>;
         }
     }
     <span class="doccomment">/// Get the index of the next element that we will add</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_next_idx</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
         <span class="comment">// Normal push</span>
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">is_empty</span>() {
+        <span class="kw">let</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>();
+        <span class="kw">if</span> <span class="ident">missing</span>.<span class="ident">is_empty</span>() {
             <span class="kw">return</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>();
         }
         <span class="comment">// Shove</span>
-        <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">last</span>().<span class="ident">unwrap</span>()
+        <span class="kw-2">*</span><span class="ident">missing</span>.<span class="ident">last</span>().<span class="ident">unwrap</span>()
     }
     <span class="doccomment">/// Remove an element that was already added</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">remove</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">idx</span>: <span class="ident">usize</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">push</span>(<span class="ident">idx</span>);
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">write</span>().<span class="ident">unwrap</span>();
+        <span class="ident">missing</span>.<span class="ident">push</span>(<span class="ident">idx</span>);
         <span class="kw">let</span> <span class="ident">elem</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">get_mut</span>(<span class="ident">idx</span>)<span class="question-mark">?</span>;
         <span class="kw">let</span> <span class="ident">elem</span> <span class="op">=</span> <span class="ident">std::mem::take</span>(<span class="ident">elem</span>);
         <span class="ident">elem</span>
+    }
+    <span class="doccomment">/// Update the atomic counters at the start, before we do anything on the other threads.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">init_update</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+        <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">store</span>(<span class="number">0</span>, <span class="ident">Relaxed</span>);
+        <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">store</span>(<span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>(), <span class="ident">Relaxed</span>);
+    }
+    <span class="doccomment">/// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">finish_update</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) {
+        <span class="comment">// Since we have read using the atomic counter, we can just remove the missing ID before it</span>
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">write</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">ctr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">load</span>(<span class="ident">Relaxed</span>);
+        <span class="comment">// The counter might be greater than the amount of missing cells</span>
+        <span class="kw">if</span> <span class="ident">ctr</span> <span class="op">&gt;</span> <span class="ident">missing</span>.<span class="ident">len</span>() {
+            <span class="ident">missing</span>.<span class="ident">clear</span>()
+        } <span class="kw">else</span> {
+            <span class="ident">missing</span>.<span class="ident">drain</span>(<span class="number">0</span>..<span class="ident">ctr</span>);
+        }
     }
     <span class="doccomment">/// Get a reference to an element in the ordered vector</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">idx</span>: <span class="ident">usize</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">T</span><span class="op">&gt;</span> {
@@ -263,16 +381,19 @@
     }
     <span class="doccomment">/// Get the number of valid elements in the ordered vector</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">count</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
-        <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() <span class="op">-</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">len</span>()
+        <span class="kw">let</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>();
+        <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() <span class="op">-</span> <span class="ident">missing</span>.<span class="ident">len</span>()
     }
     <span class="doccomment">/// Get the number of invalid elements in the ordered vector</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">count_invalid</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
-        <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">len</span>()
+        <span class="kw">let</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">read</span>().<span class="ident">unwrap</span>();
+        <span class="ident">missing</span>.<span class="ident">len</span>()
     }
     <span class="doccomment">/// Clear the whole ordered vector</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">clear</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">len</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>();
-        <span class="self">self</span>.<span class="ident">missing</span> <span class="op">=</span> (<span class="number">0</span>..<span class="ident">len</span>).<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">write</span>().<span class="ident">unwrap</span>();
+        <span class="kw-2">*</span><span class="ident">missing</span> <span class="op">=</span> (<span class="number">0</span>..<span class="ident">len</span>).<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
         <span class="comment">// https://users.rust-lang.org/t/how-to-initialize-vec-option-t-with-none/30580</span>
         <span class="kw">let</span> <span class="ident">empty</span> <span class="op">=</span> <span class="ident">std::iter::repeat_with</span>(<span class="op">|</span><span class="op">|</span> <span class="prelude-val">None</span>)
             .<span class="ident">take</span>(<span class="ident">len</span>)
@@ -284,7 +405,7 @@
 }
 
 <span class="doccomment">/// Iter magic</span>
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Get an iterator over the valid elements</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">T</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">val</span><span class="op">|</span> <span class="ident">val</span>.<span class="ident">as_ref</span>())
@@ -314,8 +435,9 @@
             })
     }
     <span class="doccomment">/// Get an iterator over the indices of the null elements</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_invalid</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">usize</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">iter</span>()
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_invalid</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">usize</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">as_ref</span>().<span class="ident">write</span>().<span class="ident">unwrap</span>().<span class="ident">clone</span>();
+        <span class="ident">missing</span>.<span class="ident">into_iter</span>()
     }
     <span class="doccomment">/// Drain the elements that only return true. This will return just an Iterator of the index and value of the drained elements</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">my_drain</span><span class="op">&lt;</span><span class="ident">F</span><span class="op">&gt;</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="kw-2">mut</span> <span class="ident">filter</span>: <span class="ident">F</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> (<span class="ident">usize</span>, <span class="ident">T</span>)<span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;_</span>
@@ -341,14 +463,14 @@
 }
 
 <span class="doccomment">/// Traits</span>
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Index</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Index</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="kw">type</span> <span class="ident">Output</span> <span class="op">=</span> <span class="ident">T</span>;
     <span class="kw">fn</span> <span class="ident">index</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">index</span>: <span class="ident">usize</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident"><span class="self">Self</span>::Output</span> {
         <span class="self">self</span>.<span class="ident">get</span>(<span class="ident">index</span>).<span class="ident">unwrap</span>()
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">IndexMut</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">OrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">IndexMut</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="kw">fn</span> <span class="ident">index_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">index</span>: <span class="ident">usize</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident"><span class="self">Self</span>::Output</span> {
         <span class="self">self</span>.<span class="ident">get_mut</span>(<span class="ident">index</span>).<span class="ident">unwrap</span>()
     }

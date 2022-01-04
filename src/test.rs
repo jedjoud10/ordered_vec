@@ -1,3 +1,4 @@
+#[cfg(test)]
 pub mod test {
     use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec};
     use std::{collections::HashMap, sync::Arc, thread::JoinHandle};
@@ -142,7 +143,7 @@ pub mod test {
         let mut vec = ShareableOrderedVec::<i32>::default();
         vec.insert(0, 0);
         vec.insert(2, 2);
-        vec.insert(6, 4);  
+        vec.insert(6, 4);
         vec.init_update();
         let shareable = vec.get_shareable();
         dbg!(&vec);
@@ -151,21 +152,21 @@ pub mod test {
 
         let tx = tx.clone();
         let thread_join_handles = (0..10)
-        .map(|_x| {
-            // Create a thread
-            let vec = shareable.clone();
-            let tx = tx.clone();
-            std::thread::spawn(move || {
-                // Change the bitfield a ton of times
-                for i in 0..10 {
-                    let elem_index = vec.get_next_id_increment();
-                    println!("Next ID: '{}'. Element is: '{}'", elem_index, i + _x * 10);
-                    tx.send((elem_index, i + _x * 10)).unwrap();
-                }
+            .map(|_x| {
+                // Create a thread
+                let vec = shareable.clone();
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    // Change the bitfield a ton of times
+                    for i in 0..10 {
+                        let elem_index = vec.get_next_id_increment();
+                        println!("Next ID: '{}'. Element is: '{}'", elem_index, i + _x * 10);
+                        tx.send((elem_index, i + _x * 10)).unwrap();
+                    }
+                })
             })
-        })
-        .collect::<Vec<JoinHandle<()>>>();
-        
+            .collect::<Vec<JoinHandle<()>>>();
+
         // Join up all the threads
         for x in thread_join_handles {
             x.join().unwrap();
@@ -175,7 +176,7 @@ pub mod test {
         // Receive all the messages, and apply them
         for (idx, elem) in rx.try_iter() {
             vec.insert(idx, elem);
-        }   
+        }
 
         dbg!(vec);
     }
