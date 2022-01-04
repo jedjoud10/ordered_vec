@@ -1,6 +1,5 @@
 use std::{
     fmt::Debug,
-    marker::PhantomData,
     ops::{Index, IndexMut},
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
@@ -63,7 +62,7 @@ impl<T> ShareableOrderedVec<T> {
             if self.vec.len() - 1 != idx {
                 panic!()
             }
-            return None;
+            None
         } else {
             // Simple overwrite
             // If we have an element there, we also panic
@@ -72,8 +71,8 @@ impl<T> ShareableOrderedVec<T> {
             }
             // Replace
             let dest = self.vec.get_mut(idx).unwrap();
-            let last = std::mem::replace(dest, Some(elem));
-            return last;
+            
+            std::mem::replace(dest, Some(elem))
         }
     }
     /// Get the index of the next element that we will add. If we call this twice, without inserting any elements, it will not change
@@ -97,8 +96,8 @@ impl<T> ShareableOrderedVec<T> {
         let mut missing = self.missing.write().unwrap();
         missing.push(idx);
         let elem = self.vec.get_mut(idx)?;
-        let elem = std::mem::take(elem);
-        elem
+        
+        std::mem::take(elem)
     }
     /// Update the atomic counters at the start, before we do anything on the other threads.
     pub fn init_update(&self) {
@@ -110,7 +109,7 @@ impl<T> ShareableOrderedVec<T> {
             .vec
             .iter()
             .enumerate()
-            .filter_map(|(index, val)| if let Some(_) = val { None } else { Some(index) })
+            .filter_map(|(index, val)| if val.is_some() { None } else { Some(index) })
             .collect::<Vec<usize>>();
     }
     /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
@@ -153,8 +152,8 @@ impl<T> ShareableOrderedVec<T> {
             .take(len)
             .collect::<Vec<_>>();
 
-        let cleared = std::mem::replace(&mut self.vec, empty);
-        cleared
+        
+        std::mem::replace(&mut self.vec, empty)
     }
 }
 
@@ -169,10 +168,7 @@ impl<T> ShareableOrderedVec<T> {
         self.vec
             .iter()
             .enumerate()
-            .filter_map(|(index, val)| match val {
-                Some(val) => Some((index, val)),
-                None => None,
-            })
+            .filter_map(|(index, val)| val.as_ref().map(|val| (index, val)))
     }
     /// Get a mutable iterator over the valid elements
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
@@ -183,10 +179,7 @@ impl<T> ShareableOrderedVec<T> {
         self.vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(index, val)| match val {
-                Some(val) => Some((index, val)),
-                None => None,
-            })
+            .filter_map(|(index, val)| val.as_mut().map(|val| (index, val)))
     }
     /// Get an iterator over the indices of the null elements
     pub fn iter_invalid(&self) -> impl Iterator<Item = usize> {

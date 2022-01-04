@@ -65,12 +65,12 @@ impl<T> OrderedVec<T> {
         if self.missing.is_empty() {
             // Add the element normally
             self.vec.push(Some(elem));
-            return self.vec.len() - 1;
+            self.vec.len() - 1
         } else {
             // If we have some null elements, we can validate the given element there
             let idx = self.missing.pop().unwrap();
             *self.vec.get_mut(idx).unwrap() = Some(elem);
-            return idx;
+            idx
         }
     }
     /// Get the index of the next element that we will add
@@ -86,8 +86,8 @@ impl<T> OrderedVec<T> {
     pub fn remove(&mut self, idx: usize) -> Option<T> {
         self.missing.push(idx);
         let elem = self.vec.get_mut(idx)?;
-        let elem = std::mem::take(elem);
-        elem
+        
+        std::mem::take(elem)
     }
     /// Get a reference to an element in the ordered vector
     pub fn get(&self, idx: usize) -> Option<&T> {
@@ -114,8 +114,8 @@ impl<T> OrderedVec<T> {
             .take(len)
             .collect::<Vec<_>>();
 
-        let cleared = std::mem::replace(&mut self.vec, empty);
-        cleared
+        
+        std::mem::replace(&mut self.vec, empty)
     }
 }
 
@@ -123,7 +123,7 @@ impl<T> OrderedVec<T> {
 impl<T> OrderedVec<T> {
     /// Convert this into an iterator
     pub fn into_iter(self) -> impl Iterator<Item = T> {
-        self.vec.into_iter().filter_map(|val| val)
+        self.vec.into_iter().flatten()
     }
     /// Get an iterator over the valid elements
     pub fn iter(&self) -> impl Iterator<Item = &T> {
@@ -134,10 +134,7 @@ impl<T> OrderedVec<T> {
         self.vec
             .iter()
             .enumerate()
-            .filter_map(|(index, val)| match val {
-                Some(val) => Some((index, val)),
-                None => None,
-            })
+            .filter_map(|(index, val)| val.as_ref().map(|val| (index, val)))
     }
     /// Get a mutable iterator over the valid elements
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
@@ -148,10 +145,7 @@ impl<T> OrderedVec<T> {
         self.vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(index, val)| match val {
-                Some(val) => Some((index, val)),
-                None => None,
-            })
+            .filter_map(|(index, val)| val.as_mut().map(|val| (index, val)))
     }
     /// Get an iterator over the indices of the null elements
     pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {

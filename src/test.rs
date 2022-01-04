@@ -111,7 +111,7 @@ pub mod test {
         vec.push_shove(2);
         vec.push_shove(3);
         vec.push_shove(4);
-        let mut removed = vec.my_drain(|index, val| val % 2 == 0);
+        let mut removed = vec.my_drain(|_index, val| val % 2 == 0);
         assert_eq!(removed.next(), Some((0, 0)));
         assert_eq!(removed.next(), Some((2, 2)));
         assert_eq!(removed.next(), Some((4, 4)));
@@ -153,7 +153,7 @@ pub mod test {
         // Make a simple channel so we can receive at what location we must insert the elements
         let (tx, rx) = std::sync::mpsc::channel::<(usize, i32)>();
 
-        let tx = tx.clone();
+        let tx = tx;
         let arc = Arc::new(RwLock::new(vec));
         let thread_join_handles = (0..10)
             .map(|_x| {
