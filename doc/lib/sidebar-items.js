@@ -1,1 +1,1 @@
-initSidebarItems({"mod":[["ordered_vec",""]]});
+initSidebarItems({"mod":[["shareable",""],["simple",""]]});
