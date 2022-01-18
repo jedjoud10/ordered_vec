@@ -3,12 +3,16 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use crate::utils::{to_id, IndexPair, from_id};
+
 /// A collection that keeps the ordering of its elements, even when deleting an element
+/// This also supports versioning, so if we add two elements and they have the same physical index, they will not have the same ID
+/// https://www.david-colson.com/2020/02/09/making-a-simple-ecs.html
 pub struct OrderedVec<T> {
     /// A list of the current elements in the list
-    pub(crate) vec: Vec<Option<T>>,
+    pub(crate) vec: Vec<(Option<T>, u32)>,
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    pub(crate) missing: Vec<usize>,
+    pub(crate) missing: Vec<u64>,
 }
 
 impl<T> Clone for OrderedVec<T>
@@ -55,47 +59,49 @@ impl<T> OrderedVec<T> {
         Self {
             vec: vals
                 .into_iter()
-                .map(|x| Some(x))
-                .collect::<Vec<Option<T>>>(),
+                .map(|x| (Some(x), 0))
+                .collect::<Vec<(Option<T>, u32)>>(),
             missing: Vec::new(),
         }
     }
     /// Add an element to the ordered vector
-    pub fn push_shove(&mut self, elem: T) -> usize {
+    pub fn push_shove(&mut self, elem: T) -> u64 {
         if self.missing.is_empty() {
             // Add the element normally
-            self.vec.push(Some(elem));
-            self.vec.len() - 1
+            self.vec.push((Some(elem), 0));
+            (self.vec.len() - 1) as u64
         } else {
             // If we have some null elements, we can validate the given element there
             let idx = self.missing.pop().unwrap();
-            *self.vec.get_mut(idx).unwrap() = Some(elem);
+            let (old_val, old_version) = self.vec.get_mut(idx as usize).unwrap();
+            *old_val = Some(elem);
+            *old_version += 1;
             idx
         }
     }
     /// Get the index of the next element that we will add
-    pub fn get_next_idx(&self) -> usize {
+    pub fn get_next_idx(&self) -> u64 {
         // Normal push
         if self.missing.is_empty() {
-            return self.vec.len();
+            return  to_id(IndexPair::new(self.vec.len(), 0));
         }
         // Shove
         *self.missing.last().unwrap()
     }
     /// Remove an element that was already added
-    pub fn remove(&mut self, idx: usize) -> Option<T> {
-        self.missing.push(idx);
-        let elem = self.vec.get_mut(idx)?;
-
+    pub fn remove(&mut self, id: u64) -> Option<T> {
+        let pair = from_id(id);
+        self.missing.push(id);
+        let (elem, version) = self.vec.get_mut(pair.index as usize)?;
         std::mem::take(elem)
     }
     /// Get a reference to an element in the ordered vector
     pub fn get(&self, idx: usize) -> Option<&T> {
-        self.vec.get(idx)?.as_ref()
+        self.vec.get(idx)?.0.as_ref()
     }
     /// Get a mutable reference to an element in the ordered vector
     pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
-        self.vec.get_mut(idx)?.as_mut()
+        self.vec.get_mut(idx)?.0.as_mut()
     }
     /// Get the number of valid elements in the ordered vector
     pub fn count(&self) -> usize {
