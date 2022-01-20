@@ -230,6 +230,7 @@ pub mod test {
             vec.insert(idx, elem);
         }
         vec.init_update();
+        vec.finish_update();
         dbg!(vec);
     }
 }

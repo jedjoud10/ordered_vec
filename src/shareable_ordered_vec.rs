@@ -95,7 +95,8 @@ impl<T> ShareableOrderedVec<T> {
             .get(ctr)
             .cloned()
             .unwrap_or_else(|| self.length.fetch_add(1, Relaxed));
-        to_id(IndexPair::new(index, 0))
+        let version = if let Some((_, index)) = self.vec.get(index) { index.unwrap_or(0) } else { 0 };
+        to_id(IndexPair::new(index, version))
     }
     /// Remove an element that is contained in the shareable vec
     pub fn remove(&mut self, id: u64) -> Option<T> {
