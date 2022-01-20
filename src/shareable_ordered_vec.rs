@@ -194,30 +194,41 @@ impl<T> ShareableOrderedVec<T> {
 /// Iter magic
 impl<T> ShareableOrderedVec<T> {
     /// Convert this into an iterator
-    pub fn into_iter(self) -> impl Iterator<Item = T> {
-        self.vec.into_iter().filter_map(|(val, _)| val)
+    pub fn into_iter(self) -> impl Iterator<Item = (u64, T)> {
+        self.vec
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, (val, version))| {
+                val.map(|val| (to_id(IndexPair::new(index, version.unwrap())), val))
+            })
     }
     /// Get an iterator over the valid elements
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
         self.vec.iter().filter_map(|(val, _)| val.as_ref())
     }
-    /// Get an iterator over the valid elements
-    pub fn iter_indexed(&self) -> impl Iterator<Item = (usize, &T)> {
+    /// Get a mutable iterator over the valid elements
+    pub fn iter_elements_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.vec.iter_mut().filter_map(|(val, _)| val.as_mut())
+    }
+    /// Get an iterator over the valid elements, but with the ID of each element
+    pub fn iter(&self) -> impl Iterator<Item = (u64, &T)> {
         self.vec
             .iter()
             .enumerate()
-            .filter_map(|(index, (val, _))| val.as_ref().map(|val| (index, val)))
+            .filter_map(|(index, (val, version))| {
+                val.as_ref()
+                    .map(|val| (to_id(IndexPair::new(index, *(version.as_ref().unwrap()))), val))
+            })
     }
-    /// Get a mutable iterator over the valid elements
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.vec.iter_mut().filter_map(|(val, _)| val.as_mut())
-    }
-    /// Get a mutable iterator over the valid elements with their index
-    pub fn iter_indexed_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
+    /// Get a mutable iterator over the valid elements, but with the ID of each element
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (u64, &mut T)> {
         self.vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(index, (val, _))| val.as_mut().map(|val| (index, val)))
+            .filter_map(|(index, (val, version))| {
+                val.as_mut()
+                    .map(|val| (to_id(IndexPair::new(index, *(version.as_ref().unwrap()))), val))
+            })
     }
     /// Get an iterator over the indices of the null elements
     pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {
@@ -232,13 +243,11 @@ impl<T> ShareableOrderedVec<T> {
         let mut removed_ids: Vec<u64> = Vec::new();
         for (index, (val, version)) in self.vec.iter_mut().enumerate() {
             if let Some(val) = val {
-                if let Some(version) = version {
-                    // If it validates the filter, we must remove it
-                    let id = to_id(IndexPair::new(index, *version));
-                    if filter(id, val) {
-                        // We must remove this value
-                        removed_ids.push(id);
-                    }
+                // If it validates the filter, we must remove it
+                let id = to_id(IndexPair::new(index, *(version.as_ref().unwrap())));
+                if filter(id, val) {
+                    // We must remove this value
+                    removed_ids.push(id);
                 }
             }
         }
