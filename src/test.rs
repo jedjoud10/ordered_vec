@@ -80,7 +80,9 @@ pub mod test {
 
         // Remove the element 2, and the index for the two other elements should stay the same
         vec.remove(idx_2);
-
+        dbg!(idx_5);
+        dbg!(idx_2);
+        dbg!(idx_6);
         assert_eq!(vec[idx_5], 5);
         assert_eq!(vec[idx_6], 6);
         assert_eq!(vec.get(idx_2), None);
@@ -97,13 +99,13 @@ pub mod test {
     #[test]
     pub fn iter_test() {
         // Iter test
-        let mut vec = OrderedVec::<i32>::default();
-        vec.push_shove(0);
-        vec.push_shove(1);
-        vec.push_shove(2);
+        let mut vec = OrderedVec::<u64>::default();
+        dbg!(vec.push_shove(0_u64 | (0_u64 << 32)));
+        dbg!(vec.push_shove(1_u64 | (0_u64 << 32)));
+        dbg!(vec.push_shove(2_u64 | (0_u64 << 32)));
 
-        for (index, elem) in vec.iter_indexed() {
-            assert_eq!(index, *elem as usize);
+        for (id, elem) in vec.iter() {
+            assert_eq!(id, *elem);
         }
 
         // My drain test
@@ -112,11 +114,13 @@ pub mod test {
         vec.push_shove(1);
         vec.push_shove(2);
         vec.push_shove(3);
+        let last = vec.push_shove(4);
+        vec.remove(last).unwrap();
         vec.push_shove(4);
         let mut removed = vec.my_drain(|_index, val| val % 2 == 0);
-        assert_eq!(removed.next(), Some((0, 0)));
-        assert_eq!(removed.next(), Some((2, 2)));
-        assert_eq!(removed.next(), Some((4, 4)));
+        assert_eq!(removed.next(), Some((0_u64 | (0_u64 << 32), 0)));
+        assert_eq!(removed.next(), Some((2_u64 | (0_u64 << 32), 2)));
+        assert_eq!(removed.next(), Some((4_u64 | (1_u64 << 32), 4)));
     }
     // Clearing test
     #[test]
@@ -140,22 +144,35 @@ pub mod test {
         vec.push_shove(5);
         assert_eq!(vec.count(), 6);
         assert_eq!(vec.count_invalid(), 0);
-        assert_eq!(
-            vec.iter().cloned().collect::<Vec<_>>(),
+        let x = vec.into_iter().map(|(_, elem)| elem).collect::<Vec<i32>>();
+        assert_eq!(x,
             vec![0, 1, 2, 3, 4, 5]
         )
     }
     // Test out the shareable ordered vec
     #[test]
     pub fn shareable_test() {
-        let mut vec = ShareableOrderedVec::<i32>::default();
-        vec.insert(0, 0);
-        vec.insert(2, 2);
-        vec.insert(4, 4);
+        let mut vec = ShareableOrderedVec::<String>::default();
+        vec.insert(0, "Bob".to_string());
+        vec.remove(0);
+        vec.insert((0_u64 | (1_u64 << 32)), "Bob".to_string());
+        vec.insert(2, "John".to_string());
+        vec.insert(4, "Lina".to_string());
+        /*
+        */
+        // +-------+--------+
+        // | Index | Value  |
+        // +-------+--------+
+        // |     0 | "Bob"  |
+        // |     1 | None   |
+        // |     2 | "John" |
+        // |     3 | None   |
+        // |     4 | "Lina" |
+        // +-------+--------+
         vec.init_update();
         dbg!(&vec);
         // Make a simple channel so we can receive at what location we must insert the elements
-        let (tx, rx) = std::sync::mpsc::channel::<(usize, i32)>();
+        let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
 
         let tx = tx;
         let arc = Arc::new(RwLock::new(vec));
@@ -167,9 +184,9 @@ pub mod test {
                 std::thread::spawn(move || {
                     // Change the bitfield a ton of times
                     for i in 0..10 {
-                        let elem_index = arc.read().unwrap().get_next_idx_increment();
-                        println!("Next ID: '{}'. Element is: '{}'", elem_index, i + _x * 10);
-                        tx.send((elem_index, i + _x * 10)).unwrap();
+                        let elem_id = arc.read().unwrap().get_next_id_increment();
+                        println!("Next ID: '{}'. Element is: '{}'", elem_id, i + _x * 10);
+                        tx.send((elem_id, format!("Number {}", i + _x * 10))).unwrap();
                     }
                 })
             })

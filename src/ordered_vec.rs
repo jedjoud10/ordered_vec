@@ -69,7 +69,7 @@ impl<T> OrderedVec<T> {
         if self.missing.is_empty() {
             // Add the element normally
             self.vec.push((Some(elem), 0));
-            (self.vec.len() - 1) as u64
+            to_id(IndexPair::new(self.vec.len() - 1, 0))
         } else {
             // If we have some null elements, we can validate the given element there
             let index = self.missing.pop().unwrap();
@@ -93,14 +93,14 @@ impl<T> OrderedVec<T> {
     pub fn get_next_id(&self) -> u64 {
         // Normal push
         if self.missing.is_empty() {
-            return to_id(IndexPair::new(self.vec.len(), 0));
+            return to_id(IndexPair::new(self.vec.len(), 1));
         }
         // Shove
         let index = *self.missing.last().unwrap();
         let (_, version) = self.vec.get(index).unwrap();
         to_id(IndexPair::new(index, *version))
     }
-    /// Remove an element that is contained in the vec.
+    /// Remove an element that is contained in the vec
     pub fn remove(&mut self, id: u64) -> Option<T> {
         let pair = from_id(id);
         self.missing.push(pair.index as usize);
@@ -119,11 +119,31 @@ impl<T> OrderedVec<T> {
     }
     /// Get a reference to an element in the ordered vector
     pub fn get(&self, id: u64) -> Option<&T> {
-        self.vec.get(from_id(id).index as usize)?.0.as_ref()
+        let pair = from_id(id);
+        // First of all check if we *might* contain the cell
+        return if (pair.index as usize) < self.vec.len() {
+            // We contain the cell, but it might be null
+            let (cell, version) = self.vec.get(pair.index as usize)?;
+            // Check if the versions are the same
+            if pair.version == *version { cell.as_ref() } else { None }
+        } else {
+            // We do not contain the cell at all
+            None
+        };
     }
     /// Get a mutable reference to an element in the ordered vector
     pub fn get_mut(&mut self, id: u64) -> Option<&mut T> {
-        self.vec.get_mut(from_id(id).index as usize)?.0.as_mut()
+        let pair = from_id(id);
+        // First of all check if we *might* contain the cell
+        return if (pair.index as usize) < self.vec.len() {
+            // We contain the cell, but it might be null
+            let (cell, version) = self.vec.get_mut(pair.index as usize)?;
+            // Check if the versions are the same
+            if pair.version == *version { cell.as_mut() } else { None }
+        } else {
+            // We do not contain the cell at all
+            None
+        };
     }
     /// Get the number of valid elements in the ordered vector
     pub fn count(&self) -> usize {
@@ -145,30 +165,30 @@ impl<T> OrderedVec<T> {
 /// Iter magic
 impl<T> OrderedVec<T> {
     /// Convert this into an iterator
-    pub fn into_iter(self) -> impl Iterator<Item = T> {
-        self.vec.into_iter().map(|(val, _)| val).flatten()
+    pub fn into_iter(self) -> impl Iterator<Item = (u64, T)> {
+        self.vec.into_iter().enumerate().filter_map(|(index, (val, version))| { 
+            val.map(|val| (to_id(IndexPair::new(index, version)), val))
+        })
     }
     /// Get an iterator over the valid elements
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
         self.vec.iter().filter_map(|(val, _)| val.as_ref())
     }
-    /// Get an iterator over the valid elements
-    pub fn iter_indexed(&self) -> impl Iterator<Item = (usize, &T)> {
-        self.vec
-            .iter()
-            .enumerate()
-            .filter_map(|(index, (val, _))| val.as_ref().map(|val| (index, val)))
-    }
     /// Get a mutable iterator over the valid elements
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+    pub fn iter_elements_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.vec.iter_mut().filter_map(|(val, _)| val.as_mut())
     }
-    /// Get a mutable iterator over the valid elements with their index
-    pub fn iter_indexed_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
-        self.vec
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(index, (val, _))| val.as_mut().map(|val| (index, val)))
+    /// Get an iterator over the valid elements, but with the ID of each element
+    pub fn iter(&self) -> impl Iterator<Item = (u64, &T)> {
+        self.vec.iter().enumerate().filter_map(|(index, (val, version))| { 
+            val.as_ref().map(|val| (to_id(IndexPair::new(index, *version)), val))
+        })
+    }
+    /// Get a mutable iterator over the valid elements, but with the ID of each element
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (u64, &mut T)> {
+        self.vec.iter_mut().enumerate().filter_map(|(index, (val, version))| { 
+            val.as_mut().map(|val| (to_id(IndexPair::new(index, *version)), val))
+        })
     }
     /// Get an iterator over the indices of the null elements
     pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {

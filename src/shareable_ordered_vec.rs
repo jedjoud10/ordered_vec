@@ -6,6 +6,8 @@ use std::{
         Arc, RwLock,
     },
 };
+
+use crate::utils::{from_id, IndexPair, to_id};
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// However, this collection can be shared between threads
 /// We can *guess* what the index is for an element that we must add
@@ -13,22 +15,22 @@ use std::{
 /// We must do the rest of our operations using an external messaging system
 pub struct ShareableOrderedVec<T> {
     /// A list of the current elements in the list
-    pub(crate) vec: Vec<Option<T>>,
+    pub(crate) vec: Vec<(Option<T>, Option<u32>)>,
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    pub(crate) missing: Arc<RwLock<Vec<usize>>>,
+    pub(crate) missing: Vec<usize>,
     /// A counter that increases every time we add an element to the list in other threads, before the main update
-    pub(crate) counter: Arc<AtomicUsize>,
+    pub(crate) counter: AtomicUsize,
     /// The current length of the vector. This will increase when we add an elements that is outisde of the current vector
-    pub(crate) length: Arc<AtomicUsize>,
+    pub(crate) length: AtomicUsize,
 }
 
 impl<T> Default for ShareableOrderedVec<T> {
     fn default() -> Self {
         Self {
             vec: Vec::new(),
-            missing: Arc::new(RwLock::new(Vec::new())),
-            counter: Arc::new(AtomicUsize::new(0)),
-            length: Arc::new(AtomicUsize::new(0)),
+            missing: Vec::new(),
+            counter: AtomicUsize::new(0),
+            length: AtomicUsize::new(0),
         }
     }
 }
@@ -40,183 +42,214 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ShareableOrderedVec")
             .field("vec", &self.vec)
-            .field("missing", &self.missing.as_ref().read().unwrap())
+            .field("missing", &self.missing)
             .finish()
     }
 }
 
 impl<T> ShareableOrderedVec<T> {
-    /// Add an element to the ordered vector, but at a specific index
+    /// Add an element to the ordered vector, but at a specific index (we get that through the ID)
     /// This will return the last element that was at that index, if possible
-    pub fn insert(&mut self, idx: usize, elem: T) -> Option<T> {
+    pub fn insert(&mut self, id: u64, elem: T) -> Option<T> {
         // Check the length first
+        let pair = from_id(id);
+        let idx = pair.index as usize;       
         if idx >= self.vec.len() {
             // We must resize and add
             self.vec.resize_with(idx, || {
                 // We want to fill the gap with just empty values
-                None
+                (None, None)
             });
             // Actually insert the elements
-            self.vec.push(Some(elem));
+            self.vec.push((Some(elem), Some(pair.version)));
             if self.vec.len() - 1 != idx {
                 panic!()
             }
             None
         } else {
             // Simple overwrite
-            // If we have an element there, we also panic
-            if self.vec.get(idx).unwrap().is_some() {
-                panic!()
-            }
             // Replace
-            let dest = self.vec.get_mut(idx).unwrap();
-
-            std::mem::replace(dest, Some(elem))
+            let (old_val, old_version) = self.vec.get_mut(idx).unwrap();
+            // If the value was uninitialized, we must initialize it
+            if old_version.is_none() {
+                *old_version = Some(0);
+                let val = std::mem::replace(old_val, Some(elem));
+                val
+            } else {
+                *old_version.as_mut().unwrap() += 1;
+                let val = std::mem::replace(old_val, Some(elem));
+                val
+            }
         }
     }
-    /// Get the index of the next element that we will add. If we call this twice, without inserting any elements, it will not change
-    pub fn get_next_idx(&self) -> usize {
+    /// Get the ID of the next element that we will add. If we call this twice, without inserting any elements, it will not change
+    pub fn get_next_id(&self) -> u64 {
         // Normal push
-        let missing = self.missing.read().unwrap();
-        missing.last().cloned().unwrap_or(self.vec.len())
+        let index = self.missing.last().cloned().unwrap_or(self.vec.len());
+        let (_, version) = self.vec.get(index).unwrap(); 
+        to_id(IndexPair::new(index, version.unwrap_or(0)))
     }
     /// Check the next index where we can add an element, but also increment the counter, so it won't be the same index
-    pub fn get_next_idx_increment(&self) -> usize {
+    pub fn get_next_id_increment(&self) -> u64 {
         // Try to get an empty cell, if we couldn't just use the length as the index
-        let missing = self.missing.as_ref().read().unwrap();
         let ctr = self.counter.fetch_add(1, Relaxed);
-        missing
+        let index = self.missing
             .get(ctr)
             .cloned()
-            .unwrap_or_else(|| self.length.fetch_add(1, Relaxed))
+            .unwrap_or_else(|| self.length.fetch_add(1, Relaxed));
+        to_id(IndexPair::new(index, 0))
     }
-    /// Remove an element that was already added
-    pub fn remove(&mut self, idx: usize) -> Option<T> {
-        let mut missing = self.missing.write().unwrap();
-        missing.push(idx);
-        let elem = self.vec.get_mut(idx)?;
-
+    /// Remove an element that is contained in the shareable vec
+    pub fn remove(&mut self, id: u64) -> Option<T> {
+        let pair = from_id(id);
+        self.missing.push(pair.index as usize);
+        let (elem, version) = self.vec.get_mut(pair.index as usize)?;
+        // Only remove if the version is the same as well
+        if pair.version != *(version.as_ref()?) {
+            return None;
+        }
+        std::mem::take(elem)
+    }
+    /// Remove an element that is contained in the vec. This does not check if the element's version matches up with the ID!
+    pub fn remove_index(&mut self, index: usize) -> Option<T> {
+        self.missing.push(index);
+        let (elem, _) = self.vec.get_mut(index as usize)?;
         std::mem::take(elem)
     }
     /// Update the atomic counters at the start, before we do anything on the other threads.
-    pub fn init_update(&self) {
+    pub fn init_update(&mut self) {
         self.counter.store(0, Relaxed);
         self.length.store(self.vec.len(), Relaxed);
         // At the start, we must update our missing indices values since they might've changed during the execution of external messages
-        let mut missing = self.missing.write().unwrap();
-        *missing = self
+        self.missing = self
             .vec
             .iter()
             .enumerate()
-            .filter_map(|(index, val)| if val.is_some() { None } else { Some(index) })
+            .filter_map(|(index, (val, version))| if val.is_some() { None } else { Some(index) })
             .collect::<Vec<usize>>();
     }
     /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
-    pub fn finish_update(&self) {
-        // Since we have read using the atomic counter, we can just remove the missing index before it
-        let mut missing = self.missing.write().unwrap();
+    pub fn finish_update(&mut self) {
+        // Since we have read using the atomic counter, we can just remove the missing indices before it
         let ctr = self.counter.load(Relaxed);
         // The counter might be greater than the amount of missing cells
-        if ctr >= missing.len() {
-            missing.clear()
+        if ctr >= self.missing.len() {
+            self.missing.clear()
         } else {
-            missing.drain(0..ctr);
+            self.missing.drain(0..ctr);
         }
     }
     /// Get a reference to an element in the ordered vector
-    pub fn get(&self, idx: usize) -> Option<&T> {
-        self.vec.get(idx)?.as_ref()
+    pub fn get(&self, id: u64) -> Option<&T> {
+        let pair = from_id(id);
+        // First of all check if we *might* contain the cell
+        return if (pair.index as usize) < self.vec.len() {
+            // We contain the cell, but it might be null
+            let (cell, version) = self.vec.get(pair.index as usize)?;
+            // Check if the versions are the same
+            if pair.version == *(version.as_ref()?) { cell.as_ref() } else { None }
+        } else {
+            // We do not contain the cell at all
+            None
+        };
     }
     /// Get a mutable reference to an element in the ordered vector
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
-        self.vec.get_mut(idx)?.as_mut()
+    pub fn get_mut(&mut self, id: u64) -> Option<&mut T> {
+        let pair = from_id(id);
+        // First of all check if we *might* contain the cell
+        return if (pair.index as usize) < self.vec.len() {
+            // We contain the cell, but it might be null
+            let (cell, version) = self.vec.get_mut(pair.index as usize)?;
+            // Check if the versions are the same
+            if pair.version == *(version.as_ref()?) { cell.as_mut() } else { None }
+        } else {
+            // We do not contain the cell at all
+            None
+        };
     }
     /// Get the number of valid elements in the ordered vector
     pub fn count(&self) -> usize {
-        let missing = self.missing.read().unwrap();
-        self.vec.len() - missing.len()
+        self.vec.len() - self.missing.len()
     }
     /// Get the number of invalid elements in the ordered vector
     pub fn count_invalid(&self) -> usize {
-        let missing = self.missing.read().unwrap();
-        missing.len()
+        self.missing.len()
     }
-    /// Clear the whole ordered vector
+    /// Clear the whole shareable ordered vector
     pub fn clear(&mut self) -> Vec<Option<T>> {
-        let len = self.vec.len();
-        let mut missing = self.missing.write().unwrap();
-        *missing = (0..len).collect::<Vec<_>>();
-        // https://users.rust-lang.org/t/how-to-initialize-vec-option-t-with-none/30580
-        let empty = std::iter::repeat_with(|| None)
-            .take(len)
-            .collect::<Vec<_>>();
-
-        std::mem::replace(&mut self.vec, empty)
+        // Simple clear
+        let rep = std::mem::take(&mut self.vec);
+        self.missing.clear();
+        rep.into_iter().map(|(val, _)| val).collect::<Vec<_>>() 
     }
 }
 
 /// Iter magic
 impl<T> ShareableOrderedVec<T> {
+    /// Convert this into an iterator
+    pub fn into_iter(self) -> impl Iterator<Item = T> {
+        self.vec.into_iter().map(|(val, _)| val).flatten()
+    }
     /// Get an iterator over the valid elements
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.vec.iter().filter_map(|val| val.as_ref())
+        self.vec.iter().filter_map(|(val, _)| val.as_ref())
     }
     /// Get an iterator over the valid elements
     pub fn iter_indexed(&self) -> impl Iterator<Item = (usize, &T)> {
         self.vec
             .iter()
             .enumerate()
-            .filter_map(|(index, val)| val.as_ref().map(|val| (index, val)))
+            .filter_map(|(index, (val, _))| val.as_ref().map(|val| (index, val)))
     }
     /// Get a mutable iterator over the valid elements
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.vec.iter_mut().filter_map(|val| val.as_mut())
+        self.vec.iter_mut().filter_map(|(val, _)| val.as_mut())
     }
     /// Get a mutable iterator over the valid elements with their index
     pub fn iter_indexed_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
         self.vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(index, val)| val.as_mut().map(|val| (index, val)))
+            .filter_map(|(index, (val, _))| val.as_mut().map(|val| (index, val)))
     }
     /// Get an iterator over the indices of the null elements
-    pub fn iter_invalid(&self) -> impl Iterator<Item = usize> {
-        let missing = self.missing.as_ref().write().unwrap().clone();
-        missing.into_iter()
+    pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {
+        self.missing.iter()
     }
     /// Drain the elements that only return true. This will return just an Iterator of the index and value of the drained elements
-    pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (usize, T)> + '_
+    pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (u64, T)> + '_
     where
-        F: FnMut(usize, &T) -> bool,
+        F: FnMut(u64, &T) -> bool,
     {
-        // Keep track of which elements should be removed
-        let indices = self
-            .iter_indexed()
-            .filter_map(|(index, val)| {
-                if filter(index, val) {
-                    Some(index)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<usize>>();
-        // Now actually remove them
-        indices
-            .into_iter()
-            .map(|idx| (idx, self.remove(idx).unwrap()))
+        // Keep track of the IDs that we must remove
+        let mut removed_ids: Vec<u64> = Vec::new();
+        for (index, (val, version)) in self.vec.iter_mut().enumerate() {
+            if let Some(val) = val {
+                if let Some(version) = version {
+                    // If it validates the filter, we must remove it
+                    let id = to_id(IndexPair::new(index, *version));
+                    if filter(id, val) {
+                        // We must remove this value
+                        removed_ids.push(id);
+                    }
+                }                
+            } 
+        }
+        // Now we can actually remove the objects
+        removed_ids.into_iter().map(|id| (id, self.remove(id).unwrap()))
     }
 }
 
 /// Traits
-impl<T> Index<usize> for ShareableOrderedVec<T> {
+impl<T> Index<u64> for ShareableOrderedVec<T> {
     type Output = T;
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(&self, index: u64) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
 
-impl<T> IndexMut<usize> for ShareableOrderedVec<T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+impl<T> IndexMut<u64> for ShareableOrderedVec<T> {
+    fn index_mut(&mut self, index: u64) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
 }
