@@ -12,7 +12,7 @@ pub struct OrderedVec<T> {
     /// A list of the current elements in the list
     pub(crate) vec: Vec<(Option<T>, u32)>,
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    pub(crate) missing: Vec<u64>,
+    pub(crate) missing: Vec<usize>,
 }
 
 impl<T> Clone for OrderedVec<T>
@@ -72,36 +72,58 @@ impl<T> OrderedVec<T> {
             (self.vec.len() - 1) as u64
         } else {
             // If we have some null elements, we can validate the given element there
-            let idx = self.missing.pop().unwrap();
-            let (old_val, old_version) = self.vec.get_mut(idx as usize).unwrap();
+            let index = self.missing.pop().unwrap();
+            let (old_val, old_version) = self.vec.get_mut(index as usize).unwrap();
             *old_val = Some(elem);
             *old_version += 1;
-            idx
+            // Create an ID from an index and old version
+            to_id(IndexPair::new(index, *old_version))
         }
     }
     /// Get the index of the next element that we will add
-    pub fn get_next_idx(&self) -> u64 {
+    pub fn get_next_index(&self) -> usize {
         // Normal push
         if self.missing.is_empty() {
-            return  to_id(IndexPair::new(self.vec.len(), 0));
+            return self.vec.len();
         }
         // Shove
         *self.missing.last().unwrap()
     }
-    /// Remove an element that was already added
+    /// Get the ID of the next element that we will add
+    pub fn get_next_id(&self) -> u64 {
+        // Normal push
+        if self.missing.is_empty() {
+            return to_id(IndexPair::new(self.vec.len(), 0));
+        }
+        // Shove
+        let index = *self.missing.last().unwrap();
+        let (_, version) = self.vec.get(index).unwrap();
+        to_id(IndexPair::new(index, *version))
+    }
+    /// Remove an element that is contained in the vec.
     pub fn remove(&mut self, id: u64) -> Option<T> {
         let pair = from_id(id);
-        self.missing.push(id);
+        self.missing.push(pair.index as usize);
         let (elem, version) = self.vec.get_mut(pair.index as usize)?;
+        // Only remove if the version is the same as well
+        if pair.version != *version {
+            return None;
+        }
+        std::mem::take(elem)
+    }
+    /// Remove an element that is contained in the vec. This does not check if the element's version matches up with the ID!
+    pub fn remove_index(&mut self, index: usize) -> Option<T> {
+        self.missing.push(index);
+        let (elem, _) = self.vec.get_mut(index as usize)?;
         std::mem::take(elem)
     }
     /// Get a reference to an element in the ordered vector
-    pub fn get(&self, idx: usize) -> Option<&T> {
-        self.vec.get(idx)?.0.as_ref()
+    pub fn get(&self, id: u64) -> Option<&T> {
+        self.vec.get(from_id(id).index as usize)?.0.as_ref()
     }
     /// Get a mutable reference to an element in the ordered vector
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
-        self.vec.get_mut(idx)?.0.as_mut()
+    pub fn get_mut(&mut self, id: u64) -> Option<&mut T> {
+        self.vec.get_mut(from_id(id).index as usize)?.0.as_mut()
     }
     /// Get the number of valid elements in the ordered vector
     pub fn count(&self) -> usize {
@@ -113,14 +135,10 @@ impl<T> OrderedVec<T> {
     }
     /// Clear the whole ordered vector
     pub fn clear(&mut self) -> Vec<Option<T>> {
-        let len = self.vec.len();
-        self.missing = (0..len).collect::<Vec<_>>();
-        // https://users.rust-lang.org/t/how-to-initialize-vec-option-t-with-none/30580
-        let empty = std::iter::repeat_with(|| None)
-            .take(len)
-            .collect::<Vec<_>>();
-
-        std::mem::replace(&mut self.vec, empty)
+        // Simple clear
+        let rep = std::mem::take(&mut self.vec);
+        self.missing.clear();
+        rep.into_iter().map(|(val, _)| val).collect::<Vec<_>>() 
     }
 }
 
@@ -128,67 +146,66 @@ impl<T> OrderedVec<T> {
 impl<T> OrderedVec<T> {
     /// Convert this into an iterator
     pub fn into_iter(self) -> impl Iterator<Item = T> {
-        self.vec.into_iter().flatten()
+        self.vec.into_iter().map(|(val, _)| val).flatten()
     }
     /// Get an iterator over the valid elements
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.vec.iter().filter_map(|val| val.as_ref())
+        self.vec.iter().filter_map(|(val, _)| val.as_ref())
     }
     /// Get an iterator over the valid elements
     pub fn iter_indexed(&self) -> impl Iterator<Item = (usize, &T)> {
         self.vec
             .iter()
             .enumerate()
-            .filter_map(|(index, val)| val.as_ref().map(|val| (index, val)))
+            .filter_map(|(index, (val, _))| val.as_ref().map(|val| (index, val)))
     }
     /// Get a mutable iterator over the valid elements
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.vec.iter_mut().filter_map(|val| val.as_mut())
+        self.vec.iter_mut().filter_map(|(val, _)| val.as_mut())
     }
     /// Get a mutable iterator over the valid elements with their index
     pub fn iter_indexed_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
         self.vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(index, val)| val.as_mut().map(|val| (index, val)))
+            .filter_map(|(index, (val, _))| val.as_mut().map(|val| (index, val)))
     }
     /// Get an iterator over the indices of the null elements
     pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {
         self.missing.iter()
     }
     /// Drain the elements that only return true. This will return just an Iterator of the index and value of the drained elements
-    pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (usize, T)> + '_
+    pub fn my_drain<F>(&mut self, mut filter: F) -> impl Iterator<Item = (u64, T)> + '_
     where
-        F: FnMut(usize, &T) -> bool,
+        F: FnMut(u64, &T) -> bool,
     {
-        // Keep track of which elements should be removed
-        let indices = self
-            .iter_indexed()
-            .filter_map(|(index, val)| {
-                if filter(index, val) {
-                    Some(index)
-                } else {
-                    None
+        // Keep track of the IDs that we must remove
+        let mut removed_ids: Vec<u64> = Vec::new();
+        for (index, (val, version)) in self.vec.iter_mut().enumerate() {
+            if let Some(val) = val {
+                // If it validates the filter, we must remove it
+                let id = to_id(IndexPair::new(index, *version));
+                if filter(id, val) {
+                    // We must remove this value
+                    removed_ids.push(id);
                 }
-            })
-            .collect::<Vec<usize>>();
-        // Now actually remove them
-        indices
-            .into_iter()
-            .map(|idx| (idx, self.remove(idx).unwrap()))
+            } 
+        }
+        // Now we can actually remove the objects
+        removed_ids.into_iter().map(|id| (id, self.remove(id).unwrap()))
     }
 }
 
 /// Traits
-impl<T> Index<usize> for OrderedVec<T> {
+impl<T> Index<u64> for OrderedVec<T> {
     type Output = T;
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(&self, index: u64) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
 
-impl<T> IndexMut<usize> for OrderedVec<T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+impl<T> IndexMut<u64> for OrderedVec<T> {
+    fn index_mut(&mut self, index: u64) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
 }

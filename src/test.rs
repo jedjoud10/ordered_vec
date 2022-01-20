@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec};
+    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec, utils::from_id};
     use std::{
         collections::HashMap,
         sync::{Arc, RwLock},
@@ -42,7 +42,7 @@ pub mod test {
 
         let i = std::time::Instant::now();
         for x in 0..(N / 2) {
-            ordered_vec.remove(x);
+            ordered_vec.remove_index(x);
         }
         let z = i.elapsed().as_micros();
         println!(
@@ -89,7 +89,9 @@ pub mod test {
 
         // Now, we will add another element, and it's index should be the same as idx_2 (Since we re-use deleted indices)
         let idx_9 = vec.push_shove(9);
-        assert_eq!(idx_9, idx_2);
+        dbg!(from_id(idx_9));
+        dbg!(from_id(idx_2));
+        assert_ne!(idx_9, idx_2);
     }
     // My drain and iter test
     #[test]
@@ -129,16 +131,18 @@ pub mod test {
         assert_eq!(cleared, vec![Some(0), Some(1), Some(2)]);
 
         assert_eq!(vec.count(), 0);
-        assert_eq!(vec.count_invalid(), 3);
+        assert_eq!(vec.count_invalid(), 0);
         vec.push_shove(0);
         vec.push_shove(1);
         vec.push_shove(2);
+        vec.push_shove(3);
         vec.push_shove(4);
         vec.push_shove(5);
-        vec.push_shove(6);
+        assert_eq!(vec.count(), 6);
+        assert_eq!(vec.count_invalid(), 0);
         assert_eq!(
-            vec.vec,
-            vec![Some(2), Some(1), Some(0), Some(4), Some(5), Some(6)]
+            vec.iter().cloned().collect::<Vec<_>>(),
+            vec![0, 1, 2, 3, 4, 5]
         )
     }
     // Test out the shareable ordered vec

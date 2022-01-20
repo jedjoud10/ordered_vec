@@ -1,4 +1,5 @@
 // An index pair containing the actual index and the version
+#[derive(Debug)]
 pub struct IndexPair {
     // First 32 bits
     pub index: u32,
@@ -21,7 +22,7 @@ impl IndexPair {
 pub fn to_id(pair: IndexPair) -> u64 {
     // We do the bit shifting magic
     let mut id = pair.index as u64;
-    id |= (pair.version << 32) as u64;
+    id |= (pair.version as u64) << 32;
     id
 }
 // Convert a u64 ID to an index and version
