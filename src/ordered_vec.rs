@@ -93,12 +93,12 @@ impl<T> OrderedVec<T> {
     pub fn get_next_id(&self) -> u64 {
         // Normal push
         if self.missing.is_empty() {
-            return to_id(IndexPair::new(self.vec.len(), 1));
+            return to_id(IndexPair::new(self.vec.len(), 0));
         }
         // Shove
         let index = *self.missing.last().unwrap();
         let (_, version) = self.vec.get(index).unwrap();
-        to_id(IndexPair::new(index, *version))
+        to_id(IndexPair::new(index, *version + 1))
     }
     /// Remove an element that is contained in the vec
     pub fn remove(&mut self, id: u64) -> Option<T> {

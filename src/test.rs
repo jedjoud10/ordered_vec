@@ -149,6 +149,19 @@ pub mod test {
             vec![0, 1, 2, 3, 4, 5]
         )
     }
+    // ID test
+    #[test]
+    pub fn id_test() {
+        let mut vec = OrderedVec::<String>::default();
+        let bob_id = vec.push_shove("Bob".to_string());
+        assert_eq!(bob_id, 0);
+        assert_eq!(vec.get_next_id(), 1_u64);
+        assert!(vec.remove(bob_id).is_some());
+        let john_id = vec.get_next_id(); // Index: 0, Version: 1
+        let john_id2= vec.push_shove("John".to_string()); // Index: 0, Version: 1
+        assert_eq!(john_id, john_id2);
+        assert_eq!(john_id2, (0_u64 | (1_u64 << 32)))
+    }
     // Test out the shareable ordered vec
     #[test]
     pub fn shareable_test() {
