@@ -17,7 +17,7 @@ impl IndexPair {
         }
     }
 }
- 
+
 // Convert an index and version to a u64 ID
 pub fn to_id(pair: IndexPair) -> u64 {
     // We do the bit shifting magic

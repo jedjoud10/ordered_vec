@@ -1,6 +1,8 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec, utils::from_id};
+    use crate::{
+        ordered_vec::OrderedVec, shareable_ordered_vec::ShareableOrderedVec, utils::from_id,
+    };
     use std::{
         collections::HashMap,
         sync::{Arc, RwLock},
@@ -145,9 +147,7 @@ pub mod test {
         assert_eq!(vec.count(), 6);
         assert_eq!(vec.count_invalid(), 0);
         let x = vec.into_iter().map(|(_, elem)| elem).collect::<Vec<i32>>();
-        assert_eq!(x,
-            vec![0, 1, 2, 3, 4, 5]
-        )
+        assert_eq!(x, vec![0, 1, 2, 3, 4, 5])
     }
     // ID test
     #[test]
@@ -158,7 +158,7 @@ pub mod test {
         assert_eq!(vec.get_next_id(), 1_u64);
         assert!(vec.remove(bob_id).is_some());
         let john_id = vec.get_next_id(); // Index: 0, Version: 1
-        let john_id2= vec.push_shove("John".to_string()); // Index: 0, Version: 1
+        let john_id2 = vec.push_shove("John".to_string()); // Index: 0, Version: 1
         assert_eq!(john_id, john_id2);
         assert_eq!(john_id2, (0_u64 | (1_u64 << 32)))
     }
@@ -172,7 +172,7 @@ pub mod test {
         vec.insert(2, "John".to_string());
         vec.insert(4, "Lina".to_string());
         /*
-        */
+         */
         // +-------+--------+
         // | Index | Value  |
         // +-------+--------+
@@ -199,7 +199,8 @@ pub mod test {
                     for i in 0..10 {
                         let elem_id = arc.read().unwrap().get_next_id_increment();
                         println!("Next ID: '{}'. Element is: '{}'", elem_id, i + _x * 10);
-                        tx.send((elem_id, format!("Number {}", i + _x * 10))).unwrap();
+                        tx.send((elem_id, format!("Number {}", i + _x * 10)))
+                            .unwrap();
                     }
                 })
             })

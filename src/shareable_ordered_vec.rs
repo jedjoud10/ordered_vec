@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use crate::utils::{from_id, IndexPair, to_id};
+use crate::utils::{from_id, to_id, IndexPair};
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// However, this collection can be shared between threads
 /// We can *guess* what the index is for an element that we must add
@@ -53,7 +53,7 @@ impl<T> ShareableOrderedVec<T> {
     pub fn insert(&mut self, id: u64, elem: T) -> Option<T> {
         // Check the length first
         let pair = from_id(id);
-        let idx = pair.index as usize;       
+        let idx = pair.index as usize;
         if idx >= self.vec.len() {
             // We must resize and add
             self.vec.resize_with(idx, || {
@@ -86,14 +86,15 @@ impl<T> ShareableOrderedVec<T> {
     pub fn get_next_id(&self) -> u64 {
         // Normal push
         let index = self.missing.last().cloned().unwrap_or(self.vec.len());
-        let (_, version) = self.vec.get(index).unwrap(); 
+        let (_, version) = self.vec.get(index).unwrap();
         to_id(IndexPair::new(index, version.unwrap_or(0)))
     }
     /// Check the next index where we can add an element, but also increment the counter, so it won't be the same index
     pub fn get_next_id_increment(&self) -> u64 {
         // Try to get an empty cell, if we couldn't just use the length as the index
         let ctr = self.counter.fetch_add(1, Relaxed);
-        let index = self.missing
+        let index = self
+            .missing
             .get(ctr)
             .cloned()
             .unwrap_or_else(|| self.length.fetch_add(1, Relaxed));
@@ -147,7 +148,11 @@ impl<T> ShareableOrderedVec<T> {
             // We contain the cell, but it might be null
             let (cell, version) = self.vec.get(pair.index as usize)?;
             // Check if the versions are the same
-            if pair.version == *(version.as_ref()?) { cell.as_ref() } else { None }
+            if pair.version == *(version.as_ref()?) {
+                cell.as_ref()
+            } else {
+                None
+            }
         } else {
             // We do not contain the cell at all
             None
@@ -161,7 +166,11 @@ impl<T> ShareableOrderedVec<T> {
             // We contain the cell, but it might be null
             let (cell, version) = self.vec.get_mut(pair.index as usize)?;
             // Check if the versions are the same
-            if pair.version == *(version.as_ref()?) { cell.as_mut() } else { None }
+            if pair.version == *(version.as_ref()?) {
+                cell.as_mut()
+            } else {
+                None
+            }
         } else {
             // We do not contain the cell at all
             None
@@ -180,7 +189,7 @@ impl<T> ShareableOrderedVec<T> {
         // Simple clear
         let rep = std::mem::take(&mut self.vec);
         self.missing.clear();
-        rep.into_iter().map(|(val, _)| val).collect::<Vec<_>>() 
+        rep.into_iter().map(|(val, _)| val).collect::<Vec<_>>()
     }
 }
 
@@ -232,11 +241,13 @@ impl<T> ShareableOrderedVec<T> {
                         // We must remove this value
                         removed_ids.push(id);
                     }
-                }                
-            } 
+                }
+            }
         }
         // Now we can actually remove the objects
-        removed_ids.into_iter().map(|id| (id, self.remove(id).unwrap()))
+        removed_ids
+            .into_iter()
+            .map(|id| (id, self.remove(id).unwrap()))
     }
 }
 
