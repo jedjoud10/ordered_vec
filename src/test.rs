@@ -168,7 +168,7 @@ pub mod test {
         let mut vec = ShareableOrderedVec::<String>::default();
         vec.insert(0, "Bob".to_string());
         vec.remove(0);
-        vec.insert((0_u64 | (1_u64 << 32)), "Bob".to_string());
+        vec.insert(0_u64 | (1_u64 << 32), "Bob".to_string());
         vec.insert(2, "John".to_string());
         vec.insert(4, "Lina".to_string());
         /*

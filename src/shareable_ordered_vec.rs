@@ -1,10 +1,7 @@
 use std::{
     fmt::Debug,
     ops::{Index, IndexMut},
-    sync::{
-        atomic::{AtomicUsize, Ordering::Relaxed},
-        Arc, RwLock,
-    },
+    sync::atomic::{AtomicUsize, Ordering::Relaxed},
 };
 
 use crate::utils::{from_id, to_id, IndexPair};
@@ -73,12 +70,12 @@ impl<T> ShareableOrderedVec<T> {
             // If the value was uninitialized, we must initialize it
             if old_version.is_none() {
                 *old_version = Some(0);
-                let val = std::mem::replace(old_val, Some(elem));
-                val
+
+                std::mem::replace(old_val, Some(elem))
             } else {
                 *old_version.as_mut().unwrap() += 1;
-                let val = std::mem::replace(old_val, Some(elem));
-                val
+
+                std::mem::replace(old_val, Some(elem))
             }
         }
     }
@@ -126,7 +123,7 @@ impl<T> ShareableOrderedVec<T> {
             .vec
             .iter()
             .enumerate()
-            .filter_map(|(index, (val, version))| if val.is_some() { None } else { Some(index) })
+            .filter_map(|(index, (val, _version))| if val.is_some() { None } else { Some(index) })
             .collect::<Vec<usize>>();
     }
     /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
@@ -197,7 +194,7 @@ impl<T> ShareableOrderedVec<T> {
 impl<T> ShareableOrderedVec<T> {
     /// Convert this into an iterator
     pub fn into_iter(self) -> impl Iterator<Item = T> {
-        self.vec.into_iter().map(|(val, _)| val).flatten()
+        self.vec.into_iter().filter_map(|(val, _)| val)
     }
     /// Get an iterator over the valid elements
     pub fn iter(&self) -> impl Iterator<Item = &T> {
