@@ -239,6 +239,7 @@ pub mod test {
         assert_eq!(vec.count(), 3);
         vec.remove(1);
         assert_eq!(vec.count(), 2);
+        dbg!(&vec.missing);
 
         // Ticky part
         let next_id = vec.get_next_id_increment();

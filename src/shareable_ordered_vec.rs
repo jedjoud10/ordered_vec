@@ -51,6 +51,7 @@ impl<T> ShareableOrderedVec<T> {
         // Check the length first
         let pair = from_id(id);
         let idx = pair.index as usize;
+        self.counter.store(0, Relaxed);
         if idx >= self.vec.len() {
             // We must resize and add
             self.vec.resize_with(idx, || {
@@ -58,12 +59,8 @@ impl<T> ShareableOrderedVec<T> {
                 (None, None)
             });
             // Actually insert the elements
-            self.vec.push((Some(elem), Some(pair.version)));
-            if self.vec.len() - 1 != idx {
-                panic!()
-            }
-            self.counter.store(0, Relaxed);
-            self.length.store(self.vec.len(), Relaxed);
+            self.vec.push((Some(elem), Some(pair.version)));     
+            self.length.fetch_max(self.vec.len(), Relaxed);       
             None
         } else {
             // Simple overwrite
@@ -95,11 +92,16 @@ impl<T> ShareableOrderedVec<T> {
     pub fn get_next_id_increment(&self) -> u64 {
         // Try to get an empty cell, if we couldn't just use the length as the index
         let ctr = self.counter.fetch_add(1, Relaxed);
-        let index = self
-            .missing
-            .get(ctr)
-            .cloned()
-            .unwrap_or_else(|| self.length.fetch_add(1, Relaxed));
+        // Calculate the index from the back to front
+        let missing_idx = self.missing.len().checked_sub(ctr+1);
+        dbg!(&self.missing);
+        dbg!(missing_idx);
+        let index = if let Some(missing_idx) = missing_idx {
+            if let Some(idx) = self.missing.get(missing_idx) {
+                *idx
+            } else { self.length.fetch_add(1, Relaxed) }
+        } else { self.length.fetch_add(1, Relaxed) };  
+        dbg!(index);      
         let version = if let Some((_, index)) = self.vec.get(index) { index.unwrap_or(0) + 1 } else { 0 };
         to_id(IndexPair::new(index, version))
     }
