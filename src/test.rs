@@ -194,7 +194,6 @@ pub mod test {
         // |     3 | None   |
         // |     4 | "Lina" |
         // +-------+--------+
-        vec.init_update();
         dbg!(&vec);
         // Make a simple channel so we can receive at what location we must insert the elements
         let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
@@ -224,13 +223,31 @@ pub mod test {
         }
         let mut vec = Arc::try_unwrap(arc).unwrap().into_inner().unwrap();
 
-        vec.finish_update();
         // Receive all the messages, and apply them
         for (idx, elem) in rx.try_iter() {
             vec.insert(idx, elem);
         }
-        vec.init_update();
-        vec.finish_update();
         dbg!(vec);
+    }
+    // An even better shareable test
+    #[test] 
+    pub fn shareable_test2() {
+        let mut vec = ShareableOrderedVec::<String>::default();
+        vec.insert(0, "Bob".to_string());
+        vec.insert(1, "John".to_string());
+        vec.insert(2, "Lina".to_string());
+        assert_eq!(vec.count(), 3);
+        vec.remove(1);
+        assert_eq!(vec.count(), 2);
+
+        // Ticky part
+        let next_id = vec.get_next_id_increment();
+        assert_eq!(next_id, 1 | (1_u64 << 32)); // Versionning moment
+        let next_id2 = vec.get_next_id_increment();
+        assert_eq!(next_id2, 3);
+        vec.insert(next_id, "Boi".to_string());
+        vec.insert(next_id2, "Moment".to_string());
+        assert_eq!(vec.count(), 4);
+        assert_eq!(vec.count_invalid(), 0);
     }
 }

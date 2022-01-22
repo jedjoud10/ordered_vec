@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     ops::{Index, IndexMut},
-    sync::atomic::{AtomicUsize, Ordering::Relaxed},
+    sync::atomic::{AtomicUsize, Ordering::Relaxed}, collections::{BTreeSet, HashSet},
 };
 
 use crate::utils::{from_id, to_id, IndexPair};
@@ -62,6 +62,17 @@ impl<T> ShareableOrderedVec<T> {
             if self.vec.len() - 1 != idx {
                 panic!()
             }
+            let old_ctr = self.counter.swap(0, Relaxed);
+            if old_ctr != 0 {
+                // Since we have read using the atomic counter, we can just remove the missing indices before it
+                // The counter might be greater than the amount of missing cells
+                if old_ctr >= self.missing.len() {
+                    self.missing.clear()
+                } else {
+                    self.missing.drain(0..old_ctr);
+                }
+            }
+            self.length.store(self.vec.len(), Relaxed);
             None
         } else {
             // Simple overwrite
@@ -87,6 +98,7 @@ impl<T> ShareableOrderedVec<T> {
         to_id(IndexPair::new(index, version.unwrap_or(0)))
     }
     /// Check the next index where we can add an element, but also increment the counter, so it won't be the same index
+    /// This assumes that we wille eventually insert an element at said index
     pub fn get_next_id_increment(&self) -> u64 {
         // Try to get an empty cell, if we couldn't just use the length as the index
         let ctr = self.counter.fetch_add(1, Relaxed);
@@ -114,29 +126,6 @@ impl<T> ShareableOrderedVec<T> {
         self.missing.push(index);
         let (elem, _) = self.vec.get_mut(index as usize)?;
         std::mem::take(elem)
-    }
-    /// Update the atomic counters at the start, before we do anything on the other threads.
-    pub fn init_update(&mut self) {
-        self.counter.store(0, Relaxed);
-        self.length.store(self.vec.len(), Relaxed);
-        // At the start, we must update our missing indices values since they might've changed during the execution of external messages
-        self.missing = self
-            .vec
-            .iter()
-            .enumerate()
-            .filter_map(|(index, (val, _version))| if val.is_some() { None } else { Some(index) })
-            .collect::<Vec<usize>>();
-    }
-    /// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads
-    pub fn finish_update(&mut self) {
-        // Since we have read using the atomic counter, we can just remove the missing indices before it
-        let ctr = self.counter.load(Relaxed);
-        // The counter might be greater than the amount of missing cells
-        if ctr >= self.missing.len() {
-            self.missing.clear()
-        } else {
-            self.missing.drain(0..ctr);
-        }
     }
     /// Get a reference to an element in the ordered vector
     pub fn get(&self, id: u64) -> Option<&T> {
