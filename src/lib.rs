@@ -1,4 +1,5 @@
 // Export
+#![feature(map_first_last)]
 mod ordered_vec;
 mod unversioned_ordered_vec;
 mod shareable_ordered_vec;

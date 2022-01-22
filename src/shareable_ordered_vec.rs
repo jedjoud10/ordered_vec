@@ -62,16 +62,7 @@ impl<T> ShareableOrderedVec<T> {
             if self.vec.len() - 1 != idx {
                 panic!()
             }
-            let old_ctr = self.counter.swap(0, Relaxed);
-            if old_ctr != 0 {
-                // Since we have read using the atomic counter, we can just remove the missing indices before it
-                // The counter might be greater than the amount of missing cells
-                if old_ctr >= self.missing.len() {
-                    self.missing.clear()
-                } else {
-                    self.missing.drain(0..old_ctr);
-                }
-            }
+            self.counter.store(0, Relaxed);
             self.length.store(self.vec.len(), Relaxed);
             None
         } else {
@@ -81,11 +72,13 @@ impl<T> ShareableOrderedVec<T> {
             // If the value was uninitialized, we must initialize it
             if old_version.is_none() {
                 *old_version = Some(0);
-
                 std::mem::replace(old_val, Some(elem))
             } else {
                 *old_version.as_mut().unwrap() += 1;
-
+                let missing_idx = self.missing.iter().position(|x| *x == idx);
+                if let Some(missing_idx) = missing_idx {
+                    self.missing.remove(missing_idx);
+                }
                 std::mem::replace(old_val, Some(elem))
             }
         }
