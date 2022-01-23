@@ -123,9 +123,7 @@ impl<T> UnversionnedOrderedVec<T> {
         self.vec
             .into_iter()
             .enumerate()
-            .filter_map(|(index, val)| {
-                val.map(|val| (index, val))
-            })
+            .filter_map(|(index, val)| val.map(|val| (index, val)))
     }
     /// Get an iterator over the valid elements
     pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
@@ -140,20 +138,14 @@ impl<T> UnversionnedOrderedVec<T> {
         self.vec
             .iter()
             .enumerate()
-            .filter_map(|(index, val)| {
-                val.as_ref()
-                    .map(|val| (index, val))
-            })
+            .filter_map(|(index, val)| val.as_ref().map(|val| (index, val)))
     }
     /// Get a mutable iterator over the valid elements, but with the ID of each element
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
         self.vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(index, val)| {
-                val.as_mut()
-                    .map(|val| (index, val))
-            })
+            .filter_map(|(index, val)| val.as_mut().map(|val| (index, val)))
     }
     /// Get an iterator over the indices of the null elements
     pub fn iter_invalid(&self) -> impl Iterator<Item = &usize> {

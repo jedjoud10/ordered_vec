@@ -1,7 +1,6 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{simple::*, shareable_ordered_vec::ShareableOrderedVec, utils::from_id,
-    };
+    use crate::{shareable_ordered_vec::ShareableOrderedVec, simple::*, utils::from_id};
     use std::{
         collections::HashMap,
         sync::{Arc, RwLock},
@@ -230,7 +229,7 @@ pub mod test {
         //dbg!(vec);
     }
     // An even better shareable test
-    #[test] 
+    #[test]
     pub fn shareable_test2() {
         let mut vec = ShareableOrderedVec::<String>::default();
         vec.insert(0, "Bob".to_string());

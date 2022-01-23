@@ -5,7 +5,6 @@ use std::{
 
 use crate::utils::{from_id, to_id, IndexPair};
 
-
 /// A collection that keeps the ordering of its elements, even when deleting an element
 /// This also supports versioning, so if we add two elements and they have the same physical index, they will not have the same ID
 /// https://www.david-colson.com/2020/02/09/making-a-simple-ecs.html
