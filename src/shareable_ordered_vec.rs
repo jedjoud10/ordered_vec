@@ -94,14 +94,11 @@ impl<T> ShareableOrderedVec<T> {
         let ctr = self.counter.fetch_add(1, Relaxed);
         // Calculate the index from the back to front
         let missing_idx = self.missing.len().checked_sub(ctr+1);
-        dbg!(&self.missing);
-        dbg!(missing_idx);
         let index = if let Some(missing_idx) = missing_idx {
             if let Some(idx) = self.missing.get(missing_idx) {
                 *idx
             } else { self.length.fetch_add(1, Relaxed) }
         } else { self.length.fetch_add(1, Relaxed) };  
-        dbg!(index);      
         let version = if let Some((_, index)) = self.vec.get(index) { index.unwrap_or(0) + 1 } else { 0 };
         to_id(IndexPair::new(index, version))
     }

@@ -81,9 +81,9 @@ pub mod test {
 
         // Remove the element 2, and the index for the two other elements should stay the same
         vec.remove(idx_2);
-        dbg!(idx_5);
-        dbg!(idx_2);
-        dbg!(idx_6);
+        //dbg!(idx_5);
+        //dbg!(idx_2);
+        //dbg!(idx_6);
         assert_eq!(vec[idx_5], 5);
         assert_eq!(vec[idx_6], 6);
         assert_eq!(vec.get(idx_2), None);
@@ -92,8 +92,8 @@ pub mod test {
 
         // Now, we will add another element, and it's index should be the same as idx_2 (Since we re-use deleted indices)
         let idx_9 = vec.push_shove(9);
-        dbg!(from_id(idx_9));
-        dbg!(from_id(idx_2));
+        //dbg!(from_id(idx_9));
+        //dbg!(from_id(idx_2));
         assert_ne!(idx_9, idx_2);
     }
     // My drain and iter test
@@ -101,9 +101,9 @@ pub mod test {
     pub fn iter_test() {
         // Iter test
         let mut vec = OrderedVec::<u64>::default();
-        dbg!(vec.push_shove(0_u64 | (0_u64 << 32)));
-        dbg!(vec.push_shove(1_u64 | (0_u64 << 32)));
-        dbg!(vec.push_shove(2_u64 | (0_u64 << 32)));
+        //dbg!(vec.push_shove(0_u64 | (0_u64 << 32)));
+        //dbg!(vec.push_shove(1_u64 | (0_u64 << 32)));
+        //dbg!(vec.push_shove(2_u64 | (0_u64 << 32)));
 
         for (id, elem) in vec.iter() {
             assert_eq!(id, *elem);
@@ -194,7 +194,7 @@ pub mod test {
         // |     3 | None   |
         // |     4 | "Lina" |
         // +-------+--------+
-        dbg!(&vec);
+        //dbg!(&vec);
         // Make a simple channel so we can receive at what location we must insert the elements
         let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
 
@@ -209,7 +209,7 @@ pub mod test {
                     // Change the bitfield a ton of times
                     for i in 0..10 {
                         let elem_id = arc.read().unwrap().get_next_id_increment();
-                        println!("Next ID: '{}'. Element is: '{}'", elem_id, i + _x * 10);
+                        //println!("Next ID: '{}'. Element is: '{}'", elem_id, i + _x * 10);
                         tx.send((elem_id, format!("Number {}", i + _x * 10)))
                             .unwrap();
                     }
@@ -227,7 +227,7 @@ pub mod test {
         for (idx, elem) in rx.try_iter() {
             vec.insert(idx, elem);
         }
-        dbg!(vec);
+        //dbg!(vec);
     }
     // An even better shareable test
     #[test] 
@@ -239,7 +239,7 @@ pub mod test {
         assert_eq!(vec.count(), 3);
         vec.remove(1);
         assert_eq!(vec.count(), 2);
-        dbg!(&vec.missing);
+        //dbg!(&vec.missing);
 
         // Ticky part
         let next_id = vec.get_next_id_increment();

@@ -253,19 +253,10 @@
 <span id="252">252</span>
 <span id="253">253</span>
 <span id="254">254</span>
-<span id="255">255</span>
-<span id="256">256</span>
-<span id="257">257</span>
-<span id="258">258</span>
-<span id="259">259</span>
-<span id="260">260</span>
-<span id="261">261</span>
-<span id="262">262</span>
-<span id="263">263</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">std</span>::{
     <span class="ident">fmt::Debug</span>,
     <span class="ident">ops</span>::{<span class="ident">Index</span>, <span class="ident">IndexMut</span>},
-    <span class="ident">sync::atomic</span>::{<span class="ident">AtomicUsize</span>, <span class="ident">Ordering::Relaxed</span>},
+    <span class="ident">sync::atomic</span>::{<span class="ident">AtomicUsize</span>, <span class="ident">Ordering::Relaxed</span>}, <span class="ident">collections</span>::{<span class="ident">BTreeSet</span>, <span class="ident">HashSet</span>},
 };
 
 <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::utils</span>::{<span class="ident">from_id</span>, <span class="ident">to_id</span>, <span class="ident">IndexPair</span>};
@@ -315,6 +306,7 @@
         <span class="comment">// Check the length first</span>
         <span class="kw">let</span> <span class="ident">pair</span> <span class="op">=</span> <span class="ident">from_id</span>(<span class="ident">id</span>);
         <span class="kw">let</span> <span class="ident">idx</span> <span class="op">=</span> <span class="ident">pair</span>.<span class="ident">index</span> <span class="kw">as</span> <span class="ident">usize</span>;
+        <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">store</span>(<span class="number">0</span>, <span class="ident">Relaxed</span>);
         <span class="kw">if</span> <span class="ident">idx</span> <span class="op">&gt;</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() {
             <span class="comment">// We must resize and add</span>
             <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">resize_with</span>(<span class="ident">idx</span>, <span class="op">|</span><span class="op">|</span> {
@@ -322,10 +314,8 @@
                 (<span class="prelude-val">None</span>, <span class="prelude-val">None</span>)
             });
             <span class="comment">// Actually insert the elements</span>
-            <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">push</span>((<span class="prelude-val">Some</span>(<span class="ident">elem</span>), <span class="prelude-val">Some</span>(<span class="ident">pair</span>.<span class="ident">version</span>)));
-            <span class="kw">if</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>() <span class="op">-</span> <span class="number">1</span> <span class="op">!</span><span class="op">=</span> <span class="ident">idx</span> {
-                <span class="macro">panic!</span>()
-            }
+            <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">push</span>((<span class="prelude-val">Some</span>(<span class="ident">elem</span>), <span class="prelude-val">Some</span>(<span class="ident">pair</span>.<span class="ident">version</span>)));     
+            <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">fetch_max</span>(<span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>(), <span class="ident">Relaxed</span>);       
             <span class="prelude-val">None</span>
         } <span class="kw">else</span> {
             <span class="comment">// Simple overwrite</span>
@@ -334,11 +324,13 @@
             <span class="comment">// If the value was uninitialized, we must initialize it</span>
             <span class="kw">if</span> <span class="ident">old_version</span>.<span class="ident">is_none</span>() {
                 <span class="kw-2">*</span><span class="ident">old_version</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="number">0</span>);
-
                 <span class="ident">std::mem::replace</span>(<span class="ident">old_val</span>, <span class="prelude-val">Some</span>(<span class="ident">elem</span>))
             } <span class="kw">else</span> {
                 <span class="kw-2">*</span><span class="ident">old_version</span>.<span class="ident">as_mut</span>().<span class="ident">unwrap</span>() <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
-
+                <span class="kw">let</span> <span class="ident">missing_idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">iter</span>().<span class="ident">position</span>(<span class="op">|</span><span class="ident">x</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">x</span> <span class="op">==</span> <span class="ident">idx</span>);
+                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">missing_idx</span>) <span class="op">=</span> <span class="ident">missing_idx</span> {
+                    <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">remove</span>(<span class="ident">missing_idx</span>);
+                }
                 <span class="ident">std::mem::replace</span>(<span class="ident">old_val</span>, <span class="prelude-val">Some</span>(<span class="ident">elem</span>))
             }
         }
@@ -351,15 +343,19 @@
         <span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="ident">version</span>.<span class="ident">unwrap_or</span>(<span class="number">0</span>)))
     }
     <span class="doccomment">/// Check the next index where we can add an element, but also increment the counter, so it won&#39;t be the same index</span>
+    <span class="doccomment">/// This assumes that we wille eventually insert an element at said index</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_next_id_increment</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">u64</span> {
         <span class="comment">// Try to get an empty cell, if we couldn&#39;t just use the length as the index</span>
         <span class="kw">let</span> <span class="ident">ctr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">fetch_add</span>(<span class="number">1</span>, <span class="ident">Relaxed</span>);
-        <span class="kw">let</span> <span class="ident">index</span> <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">missing</span>
-            .<span class="ident">get</span>(<span class="ident">ctr</span>)
-            .<span class="ident">cloned</span>()
-            .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">fetch_add</span>(<span class="number">1</span>, <span class="ident">Relaxed</span>));
-        <span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="number">0</span>))
+        <span class="comment">// Calculate the index from the back to front</span>
+        <span class="kw">let</span> <span class="ident">missing_idx</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">len</span>().<span class="ident">checked_sub</span>(<span class="ident">ctr</span><span class="op">+</span><span class="number">1</span>);
+        <span class="kw">let</span> <span class="ident">index</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">missing_idx</span>) <span class="op">=</span> <span class="ident">missing_idx</span> {
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">idx</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">get</span>(<span class="ident">missing_idx</span>) {
+                <span class="kw-2">*</span><span class="ident">idx</span>
+            } <span class="kw">else</span> { <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">fetch_add</span>(<span class="number">1</span>, <span class="ident">Relaxed</span>) }
+        } <span class="kw">else</span> { <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">fetch_add</span>(<span class="number">1</span>, <span class="ident">Relaxed</span>) };  
+        <span class="kw">let</span> <span class="ident">version</span> <span class="op">=</span> <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="kw">_</span>, <span class="ident">index</span>)) <span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">get</span>(<span class="ident">index</span>) { <span class="ident">index</span>.<span class="ident">unwrap_or</span>(<span class="number">0</span>) <span class="op">+</span> <span class="number">1</span> } <span class="kw">else</span> { <span class="number">0</span> };
+        <span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="ident">version</span>))
     }
     <span class="doccomment">/// Remove an element that is contained in the shareable vec</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">remove</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">id</span>: <span class="ident">u64</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
@@ -377,29 +373,6 @@
         <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">push</span>(<span class="ident">index</span>);
         <span class="kw">let</span> (<span class="ident">elem</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">get_mut</span>(<span class="ident">index</span> <span class="kw">as</span> <span class="ident">usize</span>)<span class="question-mark">?</span>;
         <span class="ident">std::mem::take</span>(<span class="ident">elem</span>)
-    }
-    <span class="doccomment">/// Update the atomic counters at the start, before we do anything on the other threads.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">init_update</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">store</span>(<span class="number">0</span>, <span class="ident">Relaxed</span>);
-        <span class="self">self</span>.<span class="ident">length</span>.<span class="ident">store</span>(<span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">len</span>(), <span class="ident">Relaxed</span>);
-        <span class="comment">// At the start, we must update our missing indices values since they might&#39;ve changed during the execution of external messages</span>
-        <span class="self">self</span>.<span class="ident">missing</span> <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">vec</span>
-            .<span class="ident">iter</span>()
-            .<span class="ident">enumerate</span>()
-            .<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">index</span>, (<span class="ident">val</span>, <span class="ident">_version</span>))<span class="op">|</span> <span class="kw">if</span> <span class="ident">val</span>.<span class="ident">is_some</span>() { <span class="prelude-val">None</span> } <span class="kw">else</span> { <span class="prelude-val">Some</span>(<span class="ident">index</span>) })
-            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span>();
-    }
-    <span class="doccomment">/// Update the rest of the stuff at the end, after we edit the Shareable data on the other threads. This should be ran before we run any external messages that were sent by other threads</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">finish_update</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="comment">// Since we have read using the atomic counter, we can just remove the missing indices before it</span>
-        <span class="kw">let</span> <span class="ident">ctr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">counter</span>.<span class="ident">load</span>(<span class="ident">Relaxed</span>);
-        <span class="comment">// The counter might be greater than the amount of missing cells</span>
-        <span class="kw">if</span> <span class="ident">ctr</span> <span class="op">&gt;</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">len</span>() {
-            <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">clear</span>()
-        } <span class="kw">else</span> {
-            <span class="self">self</span>.<span class="ident">missing</span>.<span class="ident">drain</span>(<span class="number">0</span>..<span class="ident">ctr</span>);
-        }
     }
     <span class="doccomment">/// Get a reference to an element in the ordered vector</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="ident">u64</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">T</span><span class="op">&gt;</span> {
@@ -457,30 +430,41 @@
 <span class="doccomment">/// Iter magic</span>
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">ShareableOrderedVec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
     <span class="doccomment">/// Convert this into an iterator</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">into_iter</span>(<span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">T</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">into_iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">val</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">val</span>)
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">into_iter</span>(<span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> (<span class="ident">u64</span>, <span class="ident">T</span>)<span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">vec</span>
+            .<span class="ident">into_iter</span>()
+            .<span class="ident">enumerate</span>()
+            .<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">index</span>, (<span class="ident">val</span>, <span class="ident">version</span>))<span class="op">|</span> {
+                <span class="ident">val</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">val</span><span class="op">|</span> (<span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="ident">version</span>.<span class="ident">unwrap</span>())), <span class="ident">val</span>))
+            })
     }
     <span class="doccomment">/// Get an iterator over the valid elements</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_elements</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">T</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">val</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">val</span>.<span class="ident">as_ref</span>())
     }
-    <span class="doccomment">/// Get an iterator over the valid elements</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_indexed</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> (<span class="ident">usize</span>, <span class="kw-2">&amp;</span><span class="ident">T</span>)<span class="op">&gt;</span> {
+    <span class="doccomment">/// Get a mutable iterator over the valid elements</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_elements_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;mut</span> <span class="ident">T</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">iter_mut</span>().<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">val</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">val</span>.<span class="ident">as_mut</span>())
+    }
+    <span class="doccomment">/// Get an iterator over the valid elements, but with the ID of each element</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> (<span class="ident">u64</span>, <span class="kw-2">&amp;</span><span class="ident">T</span>)<span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">vec</span>
             .<span class="ident">iter</span>()
             .<span class="ident">enumerate</span>()
-            .<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">index</span>, (<span class="ident">val</span>, <span class="kw">_</span>))<span class="op">|</span> <span class="ident">val</span>.<span class="ident">as_ref</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">val</span><span class="op">|</span> (<span class="ident">index</span>, <span class="ident">val</span>)))
+            .<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">index</span>, (<span class="ident">val</span>, <span class="ident">version</span>))<span class="op">|</span> {
+                <span class="ident">val</span>.<span class="ident">as_ref</span>()
+                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">val</span><span class="op">|</span> (<span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="kw-2">*</span>(<span class="ident">version</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>()))), <span class="ident">val</span>))
+            })
     }
-    <span class="doccomment">/// Get a mutable iterator over the valid elements</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;mut</span> <span class="ident">T</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">iter_mut</span>().<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">val</span>, <span class="kw">_</span>)<span class="op">|</span> <span class="ident">val</span>.<span class="ident">as_mut</span>())
-    }
-    <span class="doccomment">/// Get a mutable iterator over the valid elements with their index</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_indexed_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> (<span class="ident">usize</span>, <span class="kw-2">&amp;mut</span> <span class="ident">T</span>)<span class="op">&gt;</span> {
+    <span class="doccomment">/// Get a mutable iterator over the valid elements, but with the ID of each element</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> (<span class="ident">u64</span>, <span class="kw-2">&amp;mut</span> <span class="ident">T</span>)<span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">vec</span>
             .<span class="ident">iter_mut</span>()
             .<span class="ident">enumerate</span>()
-            .<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">index</span>, (<span class="ident">val</span>, <span class="kw">_</span>))<span class="op">|</span> <span class="ident">val</span>.<span class="ident">as_mut</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">val</span><span class="op">|</span> (<span class="ident">index</span>, <span class="ident">val</span>)))
+            .<span class="ident">filter_map</span>(<span class="op">|</span>(<span class="ident">index</span>, (<span class="ident">val</span>, <span class="ident">version</span>))<span class="op">|</span> {
+                <span class="ident">val</span>.<span class="ident">as_mut</span>()
+                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">val</span><span class="op">|</span> (<span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="kw-2">*</span>(<span class="ident">version</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>()))), <span class="ident">val</span>))
+            })
     }
     <span class="doccomment">/// Get an iterator over the indices of the null elements</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">iter_invalid</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">usize</span><span class="op">&gt;</span> {
@@ -495,13 +479,11 @@
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">removed_ids</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u64</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
         <span class="kw">for</span> (<span class="ident">index</span>, (<span class="ident">val</span>, <span class="ident">version</span>)) <span class="kw">in</span> <span class="self">self</span>.<span class="ident">vec</span>.<span class="ident">iter_mut</span>().<span class="ident">enumerate</span>() {
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">val</span>) <span class="op">=</span> <span class="ident">val</span> {
-                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">version</span>) <span class="op">=</span> <span class="ident">version</span> {
-                    <span class="comment">// If it validates the filter, we must remove it</span>
-                    <span class="kw">let</span> <span class="ident">id</span> <span class="op">=</span> <span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="kw-2">*</span><span class="ident">version</span>));
-                    <span class="kw">if</span> <span class="ident">filter</span>(<span class="ident">id</span>, <span class="ident">val</span>) {
-                        <span class="comment">// We must remove this value</span>
-                        <span class="ident">removed_ids</span>.<span class="ident">push</span>(<span class="ident">id</span>);
-                    }
+                <span class="comment">// If it validates the filter, we must remove it</span>
+                <span class="kw">let</span> <span class="ident">id</span> <span class="op">=</span> <span class="ident">to_id</span>(<span class="ident">IndexPair::new</span>(<span class="ident">index</span>, <span class="kw-2">*</span>(<span class="ident">version</span>.<span class="ident">as_ref</span>().<span class="ident">unwrap</span>())));
+                <span class="kw">if</span> <span class="ident">filter</span>(<span class="ident">id</span>, <span class="ident">val</span>) {
+                    <span class="comment">// We must remove this value</span>
+                    <span class="ident">removed_ids</span>.<span class="ident">push</span>(<span class="ident">id</span>);
                 }
             }
         }
