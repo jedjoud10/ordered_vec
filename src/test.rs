@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{shareable_ordered_vec::ShareableOrderedVec, simple::*, utils::from_id};
+    use crate::{shareable_ordered_vec::ShareableOrderedVec, simple::*};
     use std::{
         collections::HashMap,
         sync::{Arc, RwLock},
@@ -99,7 +99,7 @@ pub mod test {
     #[test]
     pub fn iter_test() {
         // Iter test
-        let mut vec = OrderedVec::<u64>::default();
+        let vec = OrderedVec::<u64>::default();
         //dbg!(vec.push_shove(0_u64 | (0_u64 << 32)));
         //dbg!(vec.push_shove(1_u64 | (0_u64 << 32)));
         //dbg!(vec.push_shove(2_u64 | (0_u64 << 32)));

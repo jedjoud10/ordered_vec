@@ -3,8 +3,6 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use crate::utils::{from_id, to_id, IndexPair};
-
 /// A collection that keeps the ordering of its elements, even when deleting an element
 pub struct UnversionnedOrderedVec<T> {
     /// A list of the current elements in the list
