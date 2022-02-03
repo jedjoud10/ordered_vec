@@ -1,10 +1,10 @@
 // Export
 mod ordered_vec;
+mod raw_ordered_vec;
 mod shareable_ordered_vec;
 mod test;
 mod unversioned_ordered_vec;
 mod utils;
-mod raw_ordered_vec;
 pub mod raw {
     pub use super::raw_ordered_vec::*;
 }
