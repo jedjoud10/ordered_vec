@@ -12,8 +12,9 @@ pub(crate) struct RawVec {
 
 impl RawVec {
     // Grow the raw vector so it can be able twice as much elements before allocating
-    unsafe fn grow(&mut self) {
+    pub(crate) unsafe fn grow(&mut self) {
         // Get the new cap and layout (the new cap is in bytes)
+        dbg!("Grow!");
         let (new_cap, new_layout) = if self.cap == 0 {
             (1 * self.type_layout.size(), self.type_layout)
         } else {
@@ -35,6 +36,7 @@ impl RawVec {
         };
 
         // If allocation fails, `new_ptr` will be null, in which case we abort.
+        dbg!(NonNull::new(new_ptr as *mut u8));
         self.ptr = match NonNull::new(new_ptr as *mut u8) {
             Some(p) => p,
             None => std::alloc::handle_alloc_error(new_layout),
@@ -46,9 +48,9 @@ impl RawVec {
     pub unsafe fn new<T: Sized>() -> Self {
         Self {
             ptr: NonNull::dangling(),
-            cap: todo!(),
+            cap: 0,
             _marker: Default::default(),
-            type_layout: todo!(),
+            type_layout: Layout::new::<T>(),
         }
     }
 }

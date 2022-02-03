@@ -1,5 +1,5 @@
 use std::{ptr::NonNull, alloc::Layout, mem, marker::PhantomData};
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 use crate::utils::{to_id, IndexPair, from_id};
 use super::raw_vec::RawVec;
 
@@ -34,13 +34,13 @@ impl RawOrderedVec {
     /// Create a new raw ordered vector with a specific type
     pub unsafe fn new<T: Sized>() -> Self {
         Self {
-            buf: RawVec::new::<(T, u32)>(),
+            buf: RawVec::new::<(Option<T>, u32)>(),
             missing: Vec::new(),
             len: 0,
         }
     }
     /// Length of all the elements
-    pub fn len(&self) -> usize { self.len() }
+    pub fn len(&self) -> usize { self.len }
     /// Internal capacity 
     pub fn cap(&self) -> usize { self.buf.cap }
 
@@ -54,10 +54,11 @@ impl RawOrderedVec {
             // Check if we have enough allocated space to be able to push this element
             if self.cap() == self.len {
                 // We must allocate
-            } else {
-                // We are bing chilling
-                std::ptr::write(self.buf.ptr.as_ptr().add(self.len) as *mut (T, u32), (elem, 0));
+                self.buf.grow();
             }
+            // Always write
+            std::ptr::write(self.buf.ptr.as_ptr().add(self.len) as *mut (T, u32), (elem, 0));
+            self.len += 1;
             to_id(IndexPair::new(self.len - 1, 0))
         } else {
             // If we have some null elements, we can validate the given element there
@@ -101,8 +102,16 @@ impl RawOrderedVec {
         }
         std::mem::take(elem)        
     }
+    /// Remove an element that is contained in the vec. This does not check if the element's version matches up with the ID!
+    pub unsafe fn remove_index<T>(&mut self, index: usize) -> Option<T> {
+        assert!(self.valid_layout::<T>(), "Generic type does not match internal type layout!");
+        self.missing.push(index);
+        let (elem, _) = self.get_unchecked_mut_raw(index as usize);
+        std::mem::take(elem)
+    }
     /// Get a reference to an element in the ordered vector
     pub unsafe fn get<T>(&self, id: u64) -> Option<&T> {
+        assert!(self.valid_layout::<T>(), "Generic type does not match internal type layout!");
         let pair = from_id(id);
         // First of all check if we *might* contain the cell
         return if (pair.index as usize) < self.len {
@@ -121,6 +130,7 @@ impl RawOrderedVec {
     }
     /// Get a mutable reference to an element in the ordered vector
     pub unsafe fn get_mut<T>(&mut self, id: u64) -> Option<&mut T> {
+        assert!(self.valid_layout::<T>(), "Generic type does not match internal type layout!");
         let pair = from_id(id);
         // First of all check if we *might* contain the cell
         return if (pair.index as usize) < self.len {
@@ -136,5 +146,34 @@ impl RawOrderedVec {
             // We do not contain the cell at all
             None
         };
+    }
+    /// Pop
+    unsafe fn pop(&mut self) -> Option<()> {
+        if self.len == 0 { return None; } 
+        else {
+            self.len -= 1;
+            Some(())
+        }
+    }
+    /// Get the number of valid elements in the ordered vector
+    pub fn count(&self) -> usize {
+        self.len - self.missing.len()
+    }
+    /// Get the number of invalid elements in the ordered vector
+    pub fn count_invalid(&self) -> usize {
+        self.missing.len()
+    }
+}
+
+impl Drop for RawOrderedVec {
+    fn drop(&mut self) {
+        // Don't leak memory
+        unsafe {
+            if self.cap() != 0 {
+                while let Some(_) = self.pop() { }
+                let layout = Layout::from_size_align(self.buf.type_layout.size() + 4, self.buf.type_layout.align()).unwrap();
+                std::alloc::dealloc(self.buf.ptr.as_ptr(), layout);
+            }
+        }
     }
 }

@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod test {
-    use crate::{shareable_ordered_vec::ShareableOrderedVec, simple::*};
+    use crate::{shareable_ordered_vec::ShareableOrderedVec, simple::*, raw::RawOrderedVec};
     use std::{
         collections::HashMap,
         sync::{Arc, RwLock},
@@ -9,65 +9,68 @@ pub mod test {
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {
-        const N: usize = 100_000;
-        let mut hashmap = HashMap::<usize, u64>::default();
-        let mut ordered_vec = OrderedVec::<u64>::default();
-        // Compare a Rust HashMap to my SmartList collection
+        unsafe {
 
-        // Adding ordered elements
-        let i = std::time::Instant::now();
-        for x in 0..N {
-            hashmap.insert(x, x as u64);
+            const N: usize = 100_000;
+            let mut hashmap = HashMap::<usize, u64>::default();
+            let mut ordered_vec = RawOrderedVec::new::<u64>();
+            // Compare a Rust HashMap to my SmartList collection
+            
+            // Adding ordered elements
+            let i = std::time::Instant::now();
+            for x in 0..N {
+                hashmap.insert(x, x as u64);
+            }
+            let x = i.elapsed().as_micros();
+            println!("Add HashMap : {}μ", x);
+            
+            let i = std::time::Instant::now();
+            for x in 0..N {
+                ordered_vec.push_shove(x as u64);
+            }
+            let z = i.elapsed().as_micros();
+            println!(
+                "Add Ordered Vec: {}μ, {}% faster than HashMap",
+                z,
+                (x as f32 / z as f32) * 100.0
+            );
+            
+            let i = std::time::Instant::now();
+            for x in 0..(N / 2) {
+                hashmap.remove(&x);
+            }
+            let x = i.elapsed().as_micros();
+            println!("Remove HashMap: {}μ", i.elapsed().as_micros());
+            
+            let i = std::time::Instant::now();
+            for x in 0..(N / 2) {
+                ordered_vec.remove_index::<u64>(x);
+            }
+            let z = i.elapsed().as_micros();
+            println!(
+                "Remove Ordered Vec: {}μ, {}% faster than HashMap",
+                i.elapsed().as_micros(),
+                (x as f32 / z as f32) * 100.0
+            );
+            
+            let i = std::time::Instant::now();
+            for x in 0..N {
+                hashmap.insert(x, x as u64);
+            }
+            let x = i.elapsed().as_micros();
+            println!("Add HashMap : {}μ", x);
+            
+            let i = std::time::Instant::now();
+            for x in 0..N {
+                ordered_vec.push_shove(x as u64);
+            }
+            let z = i.elapsed().as_micros();
+            println!(
+                "Add Ordered Vec: {}μ, {}% faster than HashMap",
+                z,
+                (x as f32 / z as f32) * 100.0
+            );
         }
-        let x = i.elapsed().as_micros();
-        println!("Add HashMap : {}μ", x);
-
-        let i = std::time::Instant::now();
-        for x in 0..N {
-            ordered_vec.push_shove(x as u64);
-        }
-        let z = i.elapsed().as_micros();
-        println!(
-            "Add Ordered Vec: {}μ, {}% faster than HashMap",
-            z,
-            (x as f32 / z as f32) * 100.0
-        );
-
-        let i = std::time::Instant::now();
-        for x in 0..(N / 2) {
-            hashmap.remove(&x);
-        }
-        let x = i.elapsed().as_micros();
-        println!("Remove HashMap: {}μ", i.elapsed().as_micros());
-
-        let i = std::time::Instant::now();
-        for x in 0..(N / 2) {
-            ordered_vec.remove_index(x);
-        }
-        let z = i.elapsed().as_micros();
-        println!(
-            "Remove Ordered Vec: {}μ, {}% faster than HashMap",
-            i.elapsed().as_micros(),
-            (x as f32 / z as f32) * 100.0
-        );
-
-        let i = std::time::Instant::now();
-        for x in 0..N {
-            hashmap.insert(x, x as u64);
-        }
-        let x = i.elapsed().as_micros();
-        println!("Add HashMap : {}μ", x);
-
-        let i = std::time::Instant::now();
-        for x in 0..N {
-            ordered_vec.push_shove(x as u64);
-        }
-        let z = i.elapsed().as_micros();
-        println!(
-            "Add Ordered Vec: {}μ, {}% faster than HashMap",
-            z,
-            (x as f32 / z as f32) * 100.0
-        );
     }
     // An actual unit test to check the order of elements in the collection
     #[test]
@@ -253,7 +256,12 @@ pub mod test {
     // Test the raw unordered vec
     #[test]
     pub fn raw_test() {
-        dbg!(Layout::new::<f32>());
-        dbg!(Layout::array::<f32>(2).unwrap());
+        unsafe {
+            let mut raw = crate::raw::RawOrderedVec::new::<u64>();
+            raw.push_shove(0_u64);
+            raw.push_shove(1_u64);
+            raw.push_shove(7_u64);
+            assert_eq!(raw.count(), 3);
+        }
     }
 }
