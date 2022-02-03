@@ -3,27 +3,63 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 use crate::utils::{to_id, IndexPair, from_id};
 use super::raw_vec::RawVec;
 
-/// A raw ordered vector that stores it's elements without the need of a generic, and checks for type layout equality at runtime
+/// A raw ordered vector that stores it's elements without the need of a generic, but the elements need to implement some sort of trait that they share in common
 /// Totally not stolen from here https://doc.rust-lang.org/nomicon/vec/vec.html
-pub struct RawOrderedVec {
-    /// The raw vector containing allocated memory for (T, u32)
-    pub(crate) buf: RawVec,
+pub struct RawOrderedVec<T: ?Sized> {
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
-    pub(crate) missing: Vec<usize>, 
-    /// How many elements we have (doesn't matter if they uninitialized or nor)
+    missing: Vec<usize>,
+    /// How many elements we have (doesn't matter if they uninitialized or not)
     len: usize,
+    /// How many more elements we can store until we reallocate
+    cap: usize,
+    /// The underlying pointer for out data
+    ptr: NonNull<u8>,
+    /// The layout for the type that we must represent (T, u32)
+    pub type_layout: Layout,
+    
+    _marker: PhantomData<u8>,
 }
-impl RawOrderedVec {
+
+impl<T: ?Sized> RawOrderedVec<T> {
+    // Grow the raw vector so it can be able twice as much elements before allocating
+    unsafe fn grow(&mut self) {
+        // Get the new cap and layout (the new cap is in bytes)
+        let (new_cap, new_layout) = if self.cap == 0 {
+            (1, self.type_layout)
+        } else {
+            // The grow policy is to multiply the currently allocated space by 2
+            let new_cap = self.cap * 2;
+            let new_layout = Layout::from_size_align_unchecked(new_cap * self.type_layout.size(), self.type_layout.align());
+            (new_cap, new_layout)
+        };
+
+        // Ensure that the new allocation doesn't exceed `isize::MAX` bytes.
+        assert!(new_layout.size() <= isize::MAX as usize, "Allocation too large");
+        let new_ptr = if self.cap == 0 {
+            std::alloc::alloc(new_layout)
+        } else {
+            let old_layout = Layout::from_size_align_unchecked(self.cap * self.type_layout.size(), self.type_layout.align());
+            let old_ptr = self.ptr.as_ptr() as *mut u8;
+            std::alloc::realloc(old_ptr, old_layout, new_layout.size())
+        };
+
+        // If allocation fails, `new_ptr` will be null, in which case we abort.
+        self.ptr = match NonNull::new(new_ptr as *mut u8) {
+            Some(p) => p,
+            None => std::alloc::handle_alloc_error(new_layout),
+        };
+        self.cap = new_cap;
+    }
     /// Check for type layout equality
-    unsafe fn valid_layout<T: Sized>(&self) -> bool { Layout::new::<(Option<T>, u32)>() == self.buf.type_layout }
+    unsafe fn valid_layout(&self) -> bool { Layout::new::<(Option<T>, u32)>() == self.buf.type_layout }
     /// Get unchecked, unsafe
-    unsafe fn get_unchecked_raw<T>(&self, index: usize) -> &(Option<T>, u32) {
-        let val = std::slice::from_raw_parts(self.buf.ptr.as_ptr() as *const (Option<T>, u32), 1);
+    unsafe fn get_unchecked_raw(&self, index: usize) -> &(Option<T>, u32) {
+        let val = std::slice::from_raw_parts(self.buf.ptr.as_ptr() as *const (Option<T>, u32), self.len);
         &val[index]
     }
     /// Get mut unchecked, unsafe
-    unsafe fn get_unchecked_mut_raw<T>(&mut self, index: usize) -> &mut (Option<T>, u32) {
-        let val = std::slice::from_raw_parts_mut(self.buf.ptr.as_ptr() as *mut (Option<T>, u32), 1);
+    unsafe fn get_unchecked_mut_raw(&mut self, index: usize) -> &mut (Option<T>, u32) {
+        let val = std::slice::from_raw_parts_mut(self.buf.ptr.as_ptr() as *mut (Option<T>, u32), self.len);
         &mut val[index]
     }
     /// Get the version for a specific index
@@ -32,11 +68,14 @@ impl RawOrderedVec {
         &val[index]
     }
     /// Create a new raw ordered vector with a specific type
-    pub unsafe fn new<T: Sized>() -> Self {
+    pub fn new() -> Self {
         Self {
-            buf: RawVec::new::<(Option<T>, u32)>(),
             missing: Vec::new(),
             len: 0,
+            cap: 0,
+            ptr: NonNull::dangling(),
+            type_layout: Layout::new::<T>(),
+            _marker: Default::default(),
         }
     }
     /// Length of all the elements
@@ -45,7 +84,7 @@ impl RawOrderedVec {
     pub fn cap(&self) -> usize { self.buf.cap }
 
     /// Add an element to the ordered vector
-    pub unsafe fn push_shove<T: Sized>(&mut self, elem: T) -> u64 {
+    pub fn push_shove(&mut self, elem: T) -> u64 {
         assert!(self.valid_layout::<T>(), "Generic type does not match internal type layout!");
         // Check for type layout equality
         if self.missing.is_empty() {
