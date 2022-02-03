@@ -4,7 +4,7 @@ pub mod test {
     use std::{
         collections::HashMap,
         sync::{Arc, RwLock},
-        thread::JoinHandle,
+        thread::JoinHandle, alloc::Layout,
     };
     // Test the speed of the ordered vec
     #[test]
@@ -249,5 +249,11 @@ pub mod test {
         vec.insert(next_id2, "Moment".to_string());
         assert_eq!(vec.count(), 4);
         assert_eq!(vec.count_invalid(), 0);
+    }
+    // Test the raw unordered vec
+    #[test]
+    pub fn raw_test() {
+        dbg!(Layout::new::<f32>());
+        dbg!(Layout::array::<f32>(2).unwrap());
     }
 }
