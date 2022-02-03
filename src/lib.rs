@@ -4,7 +4,10 @@ mod shareable_ordered_vec;
 mod test;
 mod unversioned_ordered_vec;
 mod utils;
-pub mod raw;
+mod raw_ordered_vec;
+pub mod raw {
+    pub use super::raw_ordered_vec::*;
+}
 pub mod simple {
     pub use super::ordered_vec::*;
     pub use super::unversioned_ordered_vec::*;

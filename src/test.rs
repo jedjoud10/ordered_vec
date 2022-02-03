@@ -4,11 +4,74 @@ pub mod test {
     use std::{
         collections::HashMap,
         sync::{Arc, RwLock},
-        thread::JoinHandle, alloc::Layout,
+        thread::JoinHandle,
     };
     // Test the speed of the ordered vec
     #[test]
     pub fn speed_test() {
+        const N: usize = 100_000;
+        let mut hashmap = HashMap::<usize, u64>::default();
+        let mut ordered_vec = OrderedVec::<u64>::new();
+        // Compare a Rust HashMap to my SmartList collection
+        
+        // Adding ordered elements
+        let i = std::time::Instant::now();
+        for x in 0..N {
+            hashmap.insert(x, x as u64);
+        }
+        let x = i.elapsed().as_micros();
+        println!("Add HashMap : {}μ", x);
+        
+        let i = std::time::Instant::now();
+        for x in 0..N {
+            ordered_vec.push_shove(x as u64);
+        }
+        let z = i.elapsed().as_micros();
+        println!(
+            "Add Ordered Vec: {}μ, {}% faster than HashMap",
+            z,
+            (x as f32 / z as f32) * 100.0
+        );
+        
+        let i = std::time::Instant::now();
+        for x in 0..(N / 2) {
+            hashmap.remove(&x);
+        }
+        let x = i.elapsed().as_micros();
+        println!("Remove HashMap: {}μ", i.elapsed().as_micros());
+        
+        let i = std::time::Instant::now();
+        for x in 0..(N / 2) {
+            ordered_vec.remove_index(x);
+        }
+        let z = i.elapsed().as_micros();
+        println!(
+            "Remove Ordered Vec: {}μ, {}% faster than HashMap",
+            i.elapsed().as_micros(),
+            (x as f32 / z as f32) * 100.0
+        );
+        
+        let i = std::time::Instant::now();
+        for x in 0..N {
+            hashmap.insert(x, x as u64);
+        }
+        let x = i.elapsed().as_micros();
+        println!("Add HashMap : {}μ", x);
+        
+        let i = std::time::Instant::now();
+        for x in 0..N {
+            ordered_vec.push_shove(x as u64);
+        }
+        let z = i.elapsed().as_micros();
+        println!(
+            "Add Ordered Vec: {}μ, {}% faster than HashMap",
+            z,
+            (x as f32 / z as f32) * 100.0
+        );
+    }
+    // Test the speed of the raw ordered vec
+    #[test]
+    pub fn speed_test_raw() {
         unsafe {
 
             const N: usize = 100_000;
@@ -30,7 +93,7 @@ pub mod test {
             }
             let z = i.elapsed().as_micros();
             println!(
-                "Add Ordered Vec: {}μ, {}% faster than HashMap",
+                "Add Raw Ordered Vec: {}μ, {}% faster than HashMap",
                 z,
                 (x as f32 / z as f32) * 100.0
             );
@@ -48,7 +111,7 @@ pub mod test {
             }
             let z = i.elapsed().as_micros();
             println!(
-                "Remove Ordered Vec: {}μ, {}% faster than HashMap",
+                "Remove Raw Ordered Vec: {}μ, {}% faster than HashMap",
                 i.elapsed().as_micros(),
                 (x as f32 / z as f32) * 100.0
             );
@@ -66,12 +129,12 @@ pub mod test {
             }
             let z = i.elapsed().as_micros();
             println!(
-                "Add Ordered Vec: {}μ, {}% faster than HashMap",
+                "Add Raw Ordered Vec: {}μ, {}% faster than HashMap",
                 z,
                 (x as f32 / z as f32) * 100.0
             );
         }
-    }
+    }    
     // An actual unit test to check the order of elements in the collection
     #[test]
     pub fn test() {

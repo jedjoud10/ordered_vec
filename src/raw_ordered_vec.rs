@@ -1,11 +1,11 @@
+use std::mem::size_of;
 use std::{ptr::NonNull, alloc::Layout, mem, marker::PhantomData};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use crate::utils::{to_id, IndexPair, from_id};
-use super::raw_vec::RawVec;
 
-/// A raw ordered vector that stores it's elements without the need of a generic, but the elements need to implement some sort of trait that they share in common
+/// A raw ordered vector that stores it's elements without the need of a generic, and checks for type layout equality at runtime
 /// Totally not stolen from here https://doc.rust-lang.org/nomicon/vec/vec.html
-pub struct RawOrderedVec<T: ?Sized> {
+pub struct RawOrderedVec {
     /// A list of the indices that contain a null element, so whenever we add a new element, we will add it there
     missing: Vec<usize>,
     /// How many elements we have (doesn't matter if they uninitialized or not)
@@ -15,12 +15,12 @@ pub struct RawOrderedVec<T: ?Sized> {
     /// The underlying pointer for out data
     ptr: NonNull<u8>,
     /// The layout for the type that we must represent (T, u32)
-    pub type_layout: Layout,
+    type_layout: Layout,
     
     _marker: PhantomData<u8>,
 }
 
-impl<T: ?Sized> RawOrderedVec<T> {
+impl RawOrderedVec {
     // Grow the raw vector so it can be able twice as much elements before allocating
     unsafe fn grow(&mut self) {
         // Get the new cap and layout (the new cap is in bytes)
@@ -51,40 +51,40 @@ impl<T: ?Sized> RawOrderedVec<T> {
         self.cap = new_cap;
     }
     /// Check for type layout equality
-    unsafe fn valid_layout(&self) -> bool { Layout::new::<(Option<T>, u32)>() == self.buf.type_layout }
+    fn valid_layout<T: Sized>(&self) -> bool { Layout::new::<(Option<T>, u32)>() == self.type_layout }
     /// Get unchecked, unsafe
-    unsafe fn get_unchecked_raw(&self, index: usize) -> &(Option<T>, u32) {
-        let val = std::slice::from_raw_parts(self.buf.ptr.as_ptr() as *const (Option<T>, u32), self.len);
+    unsafe fn get_unchecked_raw<T: Sized>(&self, index: usize) -> &(Option<T>, u32) {
+        let val = std::slice::from_raw_parts(self.ptr.as_ptr() as *const (Option<T>, u32), self.len);
         &val[index]
     }
     /// Get mut unchecked, unsafe
-    unsafe fn get_unchecked_mut_raw(&mut self, index: usize) -> &mut (Option<T>, u32) {
-        let val = std::slice::from_raw_parts_mut(self.buf.ptr.as_ptr() as *mut (Option<T>, u32), self.len);
+    unsafe fn get_unchecked_mut_raw<T: Sized>(&mut self, index: usize) -> &mut (Option<T>, u32) {
+        let val = std::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut (Option<T>, u32), self.len);
         &mut val[index]
     }
     /// Get the version for a specific index
     unsafe fn get_version_raw(&self, index: usize) -> &u32 {
-        let val = std::slice::from_raw_parts(self.buf.ptr.as_ptr().add(self.buf.type_layout.size()) as *mut u32, 1);
+        let val = std::slice::from_raw_parts(self.ptr.as_ptr().sub(size_of::<u32>()) as *mut u32, 1);
         &val[index]
     }
     /// Create a new raw ordered vector with a specific type
-    pub fn new() -> Self {
+    pub unsafe fn new<T: Sized>() -> Self {
         Self {
-            missing: Vec::new(),
+            ptr: NonNull::dangling(),
             len: 0,
             cap: 0,
-            ptr: NonNull::dangling(),
-            type_layout: Layout::new::<T>(),
+            missing: Vec::new(),
             _marker: Default::default(),
+            type_layout: Layout::new::<(Option<T>, u32)>(),
         }
     }
     /// Length of all the elements
     pub fn len(&self) -> usize { self.len }
     /// Internal capacity 
-    pub fn cap(&self) -> usize { self.buf.cap }
+    pub fn cap(&self) -> usize { self.cap }
 
     /// Add an element to the ordered vector
-    pub fn push_shove(&mut self, elem: T) -> u64 {
+    pub unsafe fn push_shove<T: Sized>(&mut self, elem: T) -> u64 {
         assert!(self.valid_layout::<T>(), "Generic type does not match internal type layout!");
         // Check for type layout equality
         if self.missing.is_empty() {
@@ -93,16 +93,18 @@ impl<T: ?Sized> RawOrderedVec<T> {
             // Check if we have enough allocated space to be able to push this element
             if self.cap() == self.len {
                 // We must allocate
-                self.buf.grow();
+                unsafe { self.grow(); }
             }
             // Always write
-            std::ptr::write(self.buf.ptr.as_ptr().add(self.len) as *mut (T, u32), (elem, 0));
+            unsafe {
+                std::ptr::write(self.ptr.as_ptr().add(self.len) as *mut (T, u32), (elem, 0));
+            }
             self.len += 1;
             to_id(IndexPair::new(self.len - 1, 0))
         } else {
             // If we have some null elements, we can validate the given element there
             let index = self.missing.pop().unwrap();
-            let (old_val, old_version) = self.get_unchecked_mut_raw::<T>(index);
+            let (old_val, old_version) = unsafe { self.get_unchecked_mut_raw::<T>(index) };
             *old_val = Some(elem);
             *old_version += 1;
             // Create an ID from an index and old version
@@ -126,7 +128,7 @@ impl<T: ?Sized> RawOrderedVec<T> {
         }
         // Shove
         let index = *self.missing.last().unwrap();
-        let version = self.get_version_raw(index);
+        let version = unsafe { self.get_version_raw(index) };
         to_id(IndexPair::new(index, *version + 1))
     }
     /// Remove an element that is contained in the vec
@@ -134,7 +136,7 @@ impl<T: ?Sized> RawOrderedVec<T> {
         assert!(self.valid_layout::<T>(), "Generic type does not match internal type layout!");
         let pair = from_id(id);
         self.missing.push(pair.index as usize);
-        let (elem, version) = self.get_unchecked_mut_raw::<T>(pair.index as usize);
+        let (elem, version) = unsafe { self.get_unchecked_mut_raw::<T>(pair.index as usize) };
         // Only remove if the version is the same as well
         if pair.version != *version {
             return None;
@@ -174,7 +176,7 @@ impl<T: ?Sized> RawOrderedVec<T> {
         // First of all check if we *might* contain the cell
         return if (pair.index as usize) < self.len {
             // We contain the cell, but it might be null
-            let (cell, version) = self.get_unchecked_mut_raw::<T>(pair.index as usize);
+            let (cell, version) =unsafe { self.get_unchecked_mut_raw::<T>(pair.index as usize) };
             // Check if the versions are the same
             if pair.version == *version {
                 cell.as_mut()
@@ -186,8 +188,8 @@ impl<T: ?Sized> RawOrderedVec<T> {
             None
         };
     }
-    /// Pop
-    unsafe fn pop(&mut self) -> Option<()> {
+    /// Pop the last element from the ordered vec
+    pub unsafe fn pop(&mut self) -> Option<()> {
         if self.len == 0 { return None; } 
         else {
             self.len -= 1;
@@ -210,8 +212,8 @@ impl Drop for RawOrderedVec {
         unsafe {
             if self.cap() != 0 {
                 while let Some(_) = self.pop() { }
-                let layout = Layout::from_size_align(self.buf.type_layout.size() + 4, self.buf.type_layout.align()).unwrap();
-                std::alloc::dealloc(self.buf.ptr.as_ptr(), layout);
+                let layout = Layout::from_size_align(self.type_layout.size() + size_of::<u32>(), self.type_layout.align()).unwrap();
+                std::alloc::dealloc(self.ptr.as_ptr(), layout);
             }
         }
     }
